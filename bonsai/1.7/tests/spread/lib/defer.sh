@@ -16,7 +16,7 @@ fi
 if [[ -z "${__DEFER_SH__:-}" ]]; then
     # spellchecker: ignore Marcin Konowalczyk lczyk subshell
 
-    __DEFER_SH_VERSION__='2.0.0'
+    __DEFER_SH_VERSION__='2.0.1'
 
 
 
@@ -37,6 +37,7 @@ if [[ -z "${__DEFER_SH__:-}" ]]; then
         (($#)) || { printf "defer: usage: defer <cmd> <signal>...\n" >&2; _defer_restore; return 2; }
         local defer_cmd="$1"; shift
         defer_cmd="${defer_cmd%"${defer_cmd##*[!;[:space:]]}"}" # strip trailing ; and whitespace
+        [[ -n "$defer_cmd" ]] || { printf "defer: empty command\n" >&2; _defer_restore; return 2; }
         (($#)) || { printf "defer: no signal name given\n" >&2; _defer_restore; return 2; }
         # shellcheck disable=SC2317,SC2329 # invoked indirectly via eval
         _defer_extract() { printf '%s\n' "${3:-}"; }
@@ -48,6 +49,14 @@ if [[ -z "${__DEFER_SH__:-}" ]]; then
         # set -x doesn't trace them -- only the handler commands themselves show.
         # shellcheck disable=SC2016
         local reset='{ ( exit "$_defer_status" ) && :; } 2>/dev/null;'
+        # a RETURN trap set from inside a function fires once per active frame
+        # as the stack unwinds -- including defer's own return. guard RETURN
+        # handlers by frame depth so each fires only when its registering
+        # caller returns. an if-statement so the skipped case is set -e-safe,
+        # and the condition sits in a 2>/dev/null group to stay out of set -x.
+        # shellcheck disable=SC2016
+        local guard='{ (( ${#FUNCNAME[@]} == '"$(( ${#FUNCNAME[@]} - 1 ))"' )); } 2>/dev/null'
+        local unit
         for defer_name in "$@"; do
             existing_cmd=$(eval "_defer_extract $(trap -p "${defer_name}")")
             case $existing_cmd in
@@ -55,7 +64,11 @@ if [[ -z "${__DEFER_SH__:-}" ]]; then
                 '{ _defer_status=$?; '*) existing_cmd=${existing_cmd#*'} 2>/dev/null; '} ;;
                 ?*) existing_cmd="$reset $existing_cmd" ;; # foreign trap: give it a reset too
             esac
-            new_cmd="$(printf '%s' '{ _defer_status=$?; } 2>/dev/null; '; printf '%s ' "${reset}"; printf '%s; ' "${defer_cmd}"; printf '%s' "${existing_cmd}")"
+            case $defer_name in
+                [Rr][Ee][Tt][Uu][Rr][Nn]) unit="if $guard; then $reset ${defer_cmd}; fi;" ;;
+                *) unit="$reset ${defer_cmd};" ;;
+            esac
+            new_cmd="$(printf '%s' '{ _defer_status=$?; } 2>/dev/null; '; printf '%s ' "${unit}"; printf '%s' "${existing_cmd}")"
             trap -- "$new_cmd" "$defer_name" || { printf "Error: Unable to modify trap for %s\n" "$defer_name" >&2; rc=1; }
         done
         unset -f _defer_extract
@@ -119,10 +132,12 @@ if [[ -z "${__DEFER_SH__:-}" ]]; then
         }
 
         function test_defer_on_function_return() {
-            test_var=0
-            function f() { defer "test_var=1" RETURN; test_var=2; }; f
-            # RETURN trap runs when the function returns, so the value is 1
-            test "$test_var" -eq 1 || return 1
+            output=""
+            function f() { defer "output+='R'" RETURN; output+='f'; }
+            function g() { f; output+='g'; }; g
+            # R fires exactly once, when f returns: not early at defer's own
+            # return, and not again as the stack unwinds through g
+            test "$output" = "fRg" || return 1
         }
 
         function test_defer_in_function_in_subshell() {
@@ -155,6 +170,15 @@ if [[ -z "${__DEFER_SH__:-}" ]]; then
             test "$test_var" -eq 0 || return 1
             kill -USR1 $$
             test "$test_var" -eq 1 || return 1
+        }
+
+        function test_rejects_empty_command() {
+            # a cmd that is empty (or strips down to empty) must be a defer-time
+            # error, not a syntax error when the signal eventually fires
+            defer "" USR1 2>/dev/null
+            test "$?" -ne 0 || return 1
+            defer ";; " USR1 2>/dev/null
+            test "$?" -ne 0 || return 1
         }
 
         function test_no_caller_namespace_leak() {
