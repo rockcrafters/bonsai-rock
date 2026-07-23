@@ -92,9 +92,10 @@ root (or in `.cache/`) to skip the download.
 ## what's validated vs not
 
 validated on the macos dev box:
-- **real inference**: built the evaluator (cgo) against the PrismML llama.cpp fork,
-  reassembled the 4 chunks (byte-exact original sha), loaded the Q1_0 qwen3 gguf,
-  got coherent completions. full stack frontend -> evaluator -> reply also verified.
+- **real inference**: reassembled the 4 chunks (byte-exact original sha), loaded the
+  Q1_0 qwen3 gguf, got coherent completions; full stack frontend -> evaluator -> reply.
+- `bonsai.py` runs the same Q1_0 gguf through stock `llama-cpp-python` (a plain
+  **mainline** llama.cpp build) and works -- so no fork is needed (see below).
 - frontend builds + runs; `/`, `/static/htmx.min.js`, `POST /send` all work
 - both go binaries build; `go vet` clean; `GOOS=linux` cross-build ok
 - `inject-layers.sh` end-to-end on a synthetic oci layout: blob integrity, chain
@@ -102,15 +103,17 @@ validated on the macos dev box:
 
 resolved unknowns:
 - **quant**: `Q1_0` = prism-ml's 1-bit g128 (ggml type 41 / file_type 40), qwen3 arch.
-  needs the **PrismML fork** (`github.com/PrismML-Eng/llama.cpp`), NOT mainline.
-  `rockcraft.yaml` is pinned to the validated commit `7529fda`.
-- **C API**: fork matches the wrapper except `llama_kv_self_clear` -> `llama_memory_clear`
-  (already fixed in `llama_cgo.go`).
+  **mainline llama.cpp loads it** (proven by `bonsai.py`). the rock builds mainline
+  (`github.com/ggml-org/llama.cpp`); the fork the design first assumed is not used.
+- **C API**: the cgo wrapper already targets current mainline (vocab-based tokenize,
+  `llama_memory_clear`/`llama_get_memory`, `llama_model_chat_template`) -- unchanged.
 
 NOT yet validated (needs linux w/ network + rockcraft -- an lxc/vm):
+- pin `source-tag: bNNNN` in `rockcraft.yaml` to the exact llama.cpp build tag that
+  the known-good `llama-cpp-python` vendors (the version `bonsai.py` proved works)
 - `rockcraft pack` itself (part names, go plugin output path `/bin` vs `/usr/bin`,
-  bare-base staging of libc/loader)
-- the fork building cleanly *inside* rockcraft's ubuntu build env
+  bare-base staging of libc/loader; `source: ../../go` relative path resolving)
+- mainline llama.cpp building cleanly *inside* rockcraft's ubuntu build env
 - skopeo consuming the hand-edited manifest (OCI validators are picky; the one lxc
   tried had no egress so apt-install skopeo failed)
 - bare-base dynamic-loader path (`/lib64/ld-linux-*.so.2`) resolving at runtime
@@ -122,5 +125,6 @@ NOT yet validated (needs linux w/ network + rockcraft -- an lxc/vm):
   symlink staged, plus `libstdc++`/`libgomp` (pulled in by the C++ llama.cpp libs).
 - **go plugin install dir** -- `organize:` maps `bin/*` to `/usr/bin`; confirm the
   rockcraft go plugin actually emits to `bin/`.
-- **fork build inside rockcraft** -- the cmake part must install `libllama.so` +
-  `libggml*.so` and the headers to the stage; prime globs assume that layout.
+- **mainline build inside rockcraft** -- the cmake part must install `libllama.so` +
+  `libggml*.so` and the headers to the stage; prime globs assume that layout. lower
+  risk than the fork was (mainline is well-trodden), but still needs a green pack.

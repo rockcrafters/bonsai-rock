@@ -40,11 +40,14 @@ surgery, since rockcraft can't place files into chosen layers.
 
 - **quant**: filename says `Q1_0` but that's prism-ml's label -- internally it's
   ggml type 41 / file_type 40, qwen3 arch, gguf v3. 1-bit g128 (1.125 bpw).
-- **llama.cpp**: mainline CANNOT load it. needs the **PrismML fork**
-  `github.com/PrismML-Eng/llama.cpp`, branch `prism`. pinned to commit
-  `7529fdaaf99ffdc5ca71ace9c7409a56b27ad92f` (built + inference-validated locally).
-- **C API**: fork matches the wrapper except `llama_kv_self_clear` was removed ->
-  now using `llama_memory_clear(llama_get_memory(ctx), true)`.
+- **llama.cpp**: **mainline loads it** -- `bonsai.py` runs the same Q1_0 gguf through
+  stock `llama-cpp-python` (a plain mainline build) and works. so the PrismML fork the
+  design first assumed is NOT needed; rock builds mainline `github.com/ggml-org/llama.cpp`.
+  (earlier "mainline cannot load it" note was wrong / predated a mainline that can.)
+  TODO: pin `source-tag` to the exact llama.cpp tag that the known-good
+  `llama-cpp-python` vendors (currently placeholder `bNNNN`).
+- **C API**: the cgo wrapper already targets current mainline (vocab-based tokenize,
+  `llama_memory_clear`/`llama_get_memory`, `llama_model_chat_template`) -- no change.
 
 ## done + validated (on macos dev box)
 
@@ -52,23 +55,26 @@ surgery, since rockcraft can't place files into chosen layers.
 - [x] frontend: serves page + vendored htmx + `POST /send` proxy (no runtime CDN)
 - [x] evaluator: http server, startup 4-chunk reassembly, qwen3 `<think>` strip
 - [x] cgo llama wrapper: load, chat-template, tokenize, greedy/temp sampler, decode loop
-- [x] **real inference on mac**: built evaluator vs the fork, loaded Q1_0, coherent output
+- [x] **real inference on mac**: loaded Q1_0, coherent output (both the cgo evaluator
+      and `bonsai.py` via stock mainline `llama-cpp-python`)
 - [x] **full stack**: frontend htmx -> evaluator -> reply, rendered fragment
 - [x] chunk reassembly byte-exact (sha matches original 248,302,272-byte gguf)
 - [x] `inject-layers.sh` on a synthetic oci layout: blob integrity, index->manifest->
       config chain, 5-layer ordering (4 chunks below app), digest/diff_id consistency,
       byte-exact reassembly of injected chunks
 - [x] `go vet` clean (stub + cgo tags), `GOOS=linux` cross-build ok
-- [x] rockcraft.yaml points at the fork @ validated commit
+- [x] rockcraft.yaml builds mainline llama.cpp (fork dropped; `source-tag` needs pinning)
 
 ## todo (needs a network-capable linux box w/ rockcraft -- CI now covers most)
 
+- [ ] **pin `source-tag`** in rockcraft.yaml (placeholder `bNNNN`) to the llama.cpp
+      tag that the known-good `llama-cpp-python` vendors -- CI pack fails to fetch until then
 - [ ] `hack/build.sh` end-to-end: fetch-model -> `rockcraft pack` -> inject -> repack
 - [ ] **rockcraft go plugin + `source: ../../go`**: confirm a relative `..` source
       resolves (go moved to repo-root `go/`); confirm the plugin emits to `bin/`
       (the `organize:` map assumes it)
-- [ ] confirm the fork builds inside rockcraft's ubuntu build env (cmake part installs
-      `libllama.so` + `libggml*.so` + headers to the stage; prime globs assume that)
+- [ ] confirm mainline llama.cpp builds inside rockcraft's ubuntu build env (cmake part
+      installs `libllama.so` + `libggml*.so` + headers to the stage; prime globs assume that)
 - [ ] **bare-base loader**: ELF interp `/lib64/ld-linux-x86-64.so.2` must resolve;
       bare skips usrmerge. likely need a `/lib64` symlink + `libstdc++`/`libgomp` staged
 - [ ] skopeo validating the hand-edited manifest (prior lxc had no egress, couldn't test)
@@ -77,11 +83,14 @@ surgery, since rockcraft can't place files into chosen layers.
 
 ## how to resume the local inference test
 
-fork already built at `/tmp/ai/llama.cpp-prism` (may be gone after tmp cleanup; rebuild:
-`git clone -b prism --depth 1 github.com/PrismML-Eng/llama.cpp && cmake -B build -DBUILD_SHARED_LIBS=ON ... && cmake --build build`).
+quickest sanity check that mainline loads the quant: `./bonsai.py "say hi in one word"`
+(stock `llama-cpp-python`, no fork). for the cgo evaluator, build mainline llama.cpp
+shared libs and point cgo at them:
 
 ```
-L=/tmp/ai/llama.cpp-prism
+L=/tmp/ai/llama.cpp   # git clone --depth 1 https://github.com/ggml-org/llama.cpp $L
+                      # cmake -B $L/build -DBUILD_SHARED_LIBS=ON -DGGML_NATIVE=OFF $L
+                      # cmake --build $L/build -j
 cd go   # module root moved here
 CGO_ENABLED=1 CGO_CFLAGS="-I$L/include -I$L/ggml/include" CGO_LDFLAGS="-L$L/build/bin" \
   go build -o /tmp/ai/ev-real ./cmd/evaluator

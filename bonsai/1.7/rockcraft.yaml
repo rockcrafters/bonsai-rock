@@ -28,11 +28,14 @@ parts:
   # ---- llama.cpp as shared libs (dynamic link, per the design) --------------
   llama:
     plugin: cmake
-    # the PrismML fork carries the Q1_0 (1-bit g128) kernels + qwen3 support that
-    # bonsai's gguf needs. mainline llama.cpp cannot load this quant (ggml type 41
-    # / file_type 40). pinned to the commit validated locally on 2026-07-22.
-    source: https://github.com/PrismML-Eng/llama.cpp.git
-    source-commit: 7529fdaaf99ffdc5ca71ace9c7409a56b27ad92f
+    # mainline llama.cpp loads bonsai's Q1_0 gguf directly -- verified via
+    # bonsai.py, which runs the same quant through stock llama-cpp-python (a
+    # plain mainline build). no fork needed.
+    # TODO(pin): replace bNNNN with the llama.cpp build tag that the known-good
+    # llama-cpp-python vendors (read it off that release's notes) -- that exact
+    # version is the one proven to load the quant in bonsai.py.
+    source: https://github.com/ggml-org/llama.cpp.git
+    source-tag: bNNNN
     cmake-parameters:
       - -DCMAKE_BUILD_TYPE=Release
       - -DCMAKE_INSTALL_PREFIX=/usr
