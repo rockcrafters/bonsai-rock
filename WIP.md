@@ -74,8 +74,12 @@ surgery, since rockcraft can't place files into chosen layers.
 - [x] cgo link vs mainline lib split: add `-lggml-cpu` (holds `ggml_backend_cpu_reg`,
       referenced by libggml.so); `CMAKE_INSTALL_LIBDIR=lib` keeps libs in `/usr/lib`
       (not the triplet dir) so prime globs + LD_LIBRARY_PATH stay arch-agnostic
-- [~] go (services) part linking: was the blocker (missing `-lggml-cpu`); fix pushed, unverified
-- [ ] runtime: `LD_LIBRARY_PATH` now covers both triplets (staged libstdc++/libgomp land there)
+- [x] **`rockcraft pack` fully green in-rock** -- llama + go/cgo link + `bin/` output + pack
+      all succeed (CI "Build base rock" passed). the whole rock design builds.
+- [x] runtime: `LD_LIBRARY_PATH` covers both triplets (staged libstdc++/libgomp land there)
+- [x] `inject.sh`: `mkdir -p build/oci` before skopeo (fresh checkout has no `build/`;
+      only worked locally b/c the dir lingered from prior runs)
+- [~] inject/skopeo + model download in CI: model fetch works; inject past step 1 unverified
 
 ## todo (needs a network-capable linux box w/ rockcraft -- CI now covers most)
 

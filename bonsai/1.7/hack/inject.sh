@@ -23,6 +23,7 @@ MODEL=${MODEL:-$(hack/download-model.sh)}
 
 printf '== 1/3 rock -> oci layout ==\n'
 rm -rf build/oci
+mkdir -p build/oci          # skopeo oci: transport needs the parent dir to exist
 "$SKOPEO" copy "oci-archive:$ROCK" "oci:build/oci:$IMG_TAG"
 
 printf '== 2/3 inject %s model layers ==\n' "$NCHUNKS"
