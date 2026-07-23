@@ -14,11 +14,9 @@ each rock version is a self-contained dir under `bonsai/<version>/` (currently
 `bonsai/1.7/`) holding the go module, rockcraft.yaml, build scripts and tests --
 rockcraft only mounts the project subtree, so the go source lives alongside it.
 
-- `bonsai/1.7/cmd/frontend`   -- pure-go htmx chat ui, proxies prompts to the evaluator
-- `bonsai/1.7/cmd/evaluator`  -- loads the gguf (cgo -> llama.cpp), serves `POST /complete`
-- `bonsai/1.7/internal/llama` -- minimal cgo wrapper over llama.cpp's C API
-   - `llama_cgo.go`  (linux+cgo) real inference
-   - `llama_stub.go` (everything else) so the go logic builds/vets on macos
+- `bonsai/1.7/cmd/frontend`   -- pure-go htmx chat ui, calls the llm service's OpenAI api
+- `bonsai/1.7/cmd/llmserve`   -- reassembles the chunks, then execs `llama-server`
+- `bonsai/1.7/internal/model` -- shared, idempotent chunk reassembly
 - `bonsai/1.7/rockcraft.yaml` -- the rock: bare base, 2 pebble services, llama.cpp libs
 - `bonsai/1.7/hack/inject-layers.sh` -- splits the gguf into 4 oci layers (the interesting bit)
 - `bonsai/1.7/hack/build.sh` -- fetch model -> pack -> convert -> inject -> oci-archive
@@ -30,9 +28,43 @@ rockcraft only mounts the project subtree, so the go source lives alongside it.
 
 both run under pebble (every rock's entrypoint):
 
-- **evaluator** (`:8081`, localhost only) loads the model, one completion per request.
+- **llm** (`:8082`) llama.cpp's `llama-server` on the gguf -- does all the
+  inference, and exposes an OpenAI-compatible API (see below).
 - **frontend** (`:8080`, the port you bind) serves the chat ui + vendored htmx,
-  posts each turn to the evaluator, swaps the reply into the log.
+  posts each turn to the llm service, swaps the reply into the log.
+
+there is deliberately no hand-rolled inference service: `llama-server` already
+does it, with streaming and tool-calls. the go side is pure (`CGO_ENABLED=0`)
+static binaries -- no cgo, no C toolchain, nothing linking llama.cpp.
+
+## using it as a local OpenAI-compatible LLM
+
+bind `:8082` and point any OpenAI-compatible client at it:
+
+```
+docker run --rm -p 8080:8080 -p 8082:8082 bonsai:1.7
+curl http://localhost:8082/v1/models
+```
+
+- base url: `http://localhost:8082/v1`
+- model id: `bonsai-1.7b` (set via `BONSAI_LLM_ALIAS`)
+- `/v1/chat/completions` incl. streaming, courtesy of `llama-server`
+
+tunables on the `llm` service: `BONSAI_LLM_PORT`, `BONSAI_LLM_CTX` (default 8192),
+`BONSAI_LLM_ALIAS`, and `BONSAI_LLM_ARGS` as an escape hatch for any other
+`llama-server` flag. the frontend takes `BONSAI_MAX_TOKENS`, `BONSAI_TEMP` and
+`BONSAI_SYSTEM` for the requests it sends.
+
+> **expectations.** bonsai-1.7B at `Q1_0` is 1.125 bpw on a 1.7B model. it will
+> answer, but agentic coding clients (opencode et al) lean hard on
+> instruction-following and tool-calling, which a model this small and this
+> heavily quantised does poorly. treat this as "the wiring works", not as a
+> usable local coding model.
+
+`llmserve` reassembles the 4 model chunks before exec'ing `llama-server`.
+that wrapper exists because pebble's `after:` only orders service *starts* (it
+would not wait for a ~237M reassembly) and a bare base has no shell to script
+"assemble then exec".
 
 ## the model is not in the rock (by design)
 
@@ -58,8 +90,9 @@ why not `umoci raw add-layer`: it only appends on **top**. placing layers *below
 the app layer needs editing the layer + `diff_ids` ordering directly, which the
 script does with `jq` + `sha256sum` + `tar`.
 
-on startup the evaluator `cat`s `/usr/share/bonsai/*.part*` (lexical order) back
-into `/var/lib/bonsai/model.gguf` (once, cached across restarts) and mmap-loads it.
+on startup `llmserve` `cat`s `/usr/share/bonsai/*.part*` (lexical order) back
+into `/var/lib/bonsai/model.gguf` (once, cached across restarts), then hands it
+to `llama-server`, which mmap-loads it.
 
 > note on "parallel download": the speedup comes from the **split into 4 blobs**,
 > not the position. blob digests are content-addressed, so a layer caches the same
@@ -92,13 +125,15 @@ root (or in `.cache/`) to skip the download.
 
 ## what's validated vs not
 
+validated in CI (both amd64 and arm64), via the spread suite:
+- `rockcraft pack`, the 4-layer model injection, the buildah multiarch stitch
+- the rock boots under pebble and the frontend serves its page + vendored htmx
+- **real inference end to end**: prompt -> frontend -> llama-server -> reply
+
 validated on the macos dev box:
-- **real inference**: reassembled the 4 chunks (byte-exact original sha), loaded the
-  Q1_0 qwen3 gguf, got coherent completions; full stack frontend -> evaluator -> reply.
 - `bonsai.py` runs the same Q1_0 gguf through stock `llama-cpp-python` (a plain
   **mainline** llama.cpp build) and works -- so no fork is needed (see below).
-- frontend builds + runs; `/`, `/static/htmx.min.js`, `POST /send` all work
-- both go binaries build; `go vet` clean; `GOOS=linux` cross-build ok
+- go binaries build; `go vet` clean; `GOOS=linux` cross-build ok
 - `inject-layers.sh` end-to-end on a synthetic oci layout: blob integrity, chain
   resolution, 5-layer ordering, digest/diff_id consistency, **byte-exact reassembly**
 
@@ -106,25 +141,18 @@ resolved unknowns:
 - **quant**: `Q1_0` = prism-ml's 1-bit g128 (ggml type 41 / file_type 40), qwen3 arch.
   **mainline llama.cpp loads it** (proven by `bonsai.py`). the rock builds mainline
   (`github.com/ggml-org/llama.cpp`); the fork the design first assumed is not used.
-- **C API**: the cgo wrapper already targets current mainline (vocab-based tokenize,
-  `llama_memory_clear`/`llama_get_memory`, `llama_model_chat_template`) -- unchanged.
 
-NOT yet validated (needs linux w/ network + rockcraft -- an lxc/vm):
-- `rockcraft pack` itself (part names, go plugin output path `/bin` vs `/usr/bin`,
-  bare-base staging of libc/loader)
-- mainline llama.cpp @ `b10092` building cleanly *inside* rockcraft's ubuntu build env,
-  and loading the Q1_0 gguf there (bonsai.py proves it on the dev box, not yet in-rock)
-- skopeo consuming the hand-edited manifest (OCI validators are picky; the one lxc
-  tried had no egress so apt-install skopeo failed)
-- bare-base dynamic-loader path (`/lib64/ld-linux-*.so.2`) resolving at runtime
+NOT yet validated:
+- the `llm` service itself -- that `llama-server` builds in the rock and serves
+  `/v1` there. this is new; `tests/spread/general/test_openai_api` covers it.
 
 ## known risk hotspots
 
-- **bare base + glibc loader** (highest now) -- dynamically-linked binaries need the
-  ELF interp at its baked-in path; bare rocks skip usrmerge. may need a `/lib64`
-  symlink staged, plus `libstdc++`/`libgomp` (pulled in by the C++ llama.cpp libs).
-- **go plugin install dir** -- `organize:` maps `bin/*` to `/usr/bin`; confirm the
-  rockcraft go plugin actually emits to `bin/`.
-- **mainline build inside rockcraft** -- the cmake part must install `libllama.so` +
-  `libggml*.so` and the headers to the stage; prime globs assume that layout. lower
-  risk than the fork was (mainline is well-trodden), but still needs a green pack.
+- **bare base + shared libs** -- `llama-server` is C++ and dynamically linked, so it
+  needs the ELF interp plus `libstdc++`/`libgomp`/glibc staged (`runtime-libs` part,
+  and `LD_LIBRARY_PATH` on the service covers both arch triplet dirs). the go
+  binaries are `CGO_ENABLED=0` static, so they carry no such dependency.
+- **build time** -- `LLAMA_BUILD_TOOLS=ON` (needed for `llama-server`) builds every
+  llama.cpp tool, though only the server is primed. that is the bulk of CI time.
+- **memory** -- `BONSAI_LLM_CTX` defaults to 8192 for agentic clients; the KV cache
+  at that size is the main memory knob.
