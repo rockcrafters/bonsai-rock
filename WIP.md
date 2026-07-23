@@ -6,9 +6,11 @@ last touched: 2026-07-23.
 
 ## repo layout (restructured 2026-07-23, mirrors not-quite-rust-rock)
 
-- go app at repo root under `go/` (module `bonsai-rock`, unchanged import paths)
-- per-version rock dir `bonsai/1.7/`: `rockcraft.yaml`, `makefile`, `spread.yaml`,
-  `hack/*`, `tests/spread/*`
+- per-version rock dir `bonsai/1.7/` is self-contained: go module `bonsai-rock`
+  (`cmd/`, `internal/`, `go.mod`), `rockcraft.yaml` (`source: .`), `makefile`,
+  `spread.yaml`, `hack/*`, `tests/spread/*`. go must live here, not at repo root:
+  rockcraft only mounts the project subtree, so a parent-dir source is unreachable
+  (rockcraft#189).
 - `hack/` scripts: `build.sh` (local full pipeline), `inject.sh` (pack-agnostic
   inject half, reused by CI), `inject-layers.sh` (oci surgery, unchanged),
   `download-model.sh` (hf -> `.cache/`), `hash_inputs.sh`, spread allocate/discard
@@ -44,14 +46,13 @@ surgery, since rockcraft can't place files into chosen layers.
   stock `llama-cpp-python` (a plain mainline build) and works. so the PrismML fork the
   design first assumed is NOT needed; rock builds mainline `github.com/ggml-org/llama.cpp`.
   (earlier "mainline cannot load it" note was wrong / predated a mainline that can.)
-  TODO: pin `source-tag` to the exact llama.cpp tag that the known-good
-  `llama-cpp-python` vendors (currently placeholder `bNNNN`).
+  pinned to mainline release `b10092`.
 - **C API**: the cgo wrapper already targets current mainline (vocab-based tokenize,
   `llama_memory_clear`/`llama_get_memory`, `llama_model_chat_template`) -- no change.
 
 ## done + validated (on macos dev box)
 
-- [x] repo scaffold: `go/cmd/{frontend,evaluator}`, `go/internal/llama`, `bonsai/1.7/{hack,tests}`, rockcraft.yaml
+- [x] repo scaffold: `bonsai/1.7/{cmd/{frontend,evaluator},internal/llama,hack,tests}`, rockcraft.yaml
 - [x] frontend: serves page + vendored htmx + `POST /send` proxy (no runtime CDN)
 - [x] evaluator: http server, startup 4-chunk reassembly, qwen3 `<think>` strip
 - [x] cgo llama wrapper: load, chat-template, tokenize, greedy/temp sampler, decode loop
@@ -63,18 +64,17 @@ surgery, since rockcraft can't place files into chosen layers.
       config chain, 5-layer ordering (4 chunks below app), digest/diff_id consistency,
       byte-exact reassembly of injected chunks
 - [x] `go vet` clean (stub + cgo tags), `GOOS=linux` cross-build ok
-- [x] rockcraft.yaml builds mainline llama.cpp (fork dropped; `source-tag` needs pinning)
+- [x] rockcraft.yaml builds mainline llama.cpp @ `b10092` (fork dropped)
+- [x] go source local to the version dir (`source: .`) -- fixes rockcraft#189 parent-source
 
 ## todo (needs a network-capable linux box w/ rockcraft -- CI now covers most)
 
-- [ ] **pin `source-tag`** in rockcraft.yaml (placeholder `bNNNN`) to the llama.cpp
-      tag that the known-good `llama-cpp-python` vendors -- CI pack fails to fetch until then
 - [ ] `hack/build.sh` end-to-end: fetch-model -> `rockcraft pack` -> inject -> repack
-- [ ] **rockcraft go plugin + `source: ../../go`**: confirm a relative `..` source
-      resolves (go moved to repo-root `go/`); confirm the plugin emits to `bin/`
-      (the `organize:` map assumes it)
-- [ ] confirm mainline llama.cpp builds inside rockcraft's ubuntu build env (cmake part
-      installs `libllama.so` + `libggml*.so` + headers to the stage; prime globs assume that)
+- [ ] confirm the go plugin emits to `bin/` (the `organize:` map assumes it) now that
+      `source: .` copies the whole version dir (hack/, tests/) as the go part source
+- [ ] confirm mainline llama.cpp @ `b10092` builds inside rockcraft's ubuntu build env
+      (cmake part installs `libllama.so` + `libggml*.so` + headers; prime globs assume that)
+      and loads the Q1_0 gguf in-rock
 - [ ] **bare-base loader**: ELF interp `/lib64/ld-linux-x86-64.so.2` must resolve;
       bare skips usrmerge. likely need a `/lib64` symlink + `libstdc++`/`libgomp` staged
 - [ ] skopeo validating the hand-edited manifest (prior lxc had no egress, couldn't test)
@@ -91,7 +91,7 @@ shared libs and point cgo at them:
 L=/tmp/ai/llama.cpp   # git clone --depth 1 https://github.com/ggml-org/llama.cpp $L
                       # cmake -B $L/build -DBUILD_SHARED_LIBS=ON -DGGML_NATIVE=OFF $L
                       # cmake --build $L/build -j
-cd go   # module root moved here
+cd bonsai/1.7   # go module lives in the version dir now
 CGO_ENABLED=1 CGO_CFLAGS="-I$L/include -I$L/ggml/include" CGO_LDFLAGS="-L$L/build/bin" \
   go build -o /tmp/ai/ev-real ./cmd/evaluator
 DYLD_LIBRARY_PATH="$L/build/bin" \

@@ -10,12 +10,13 @@ docker run --rm -p 8080:8080 bonsai:1.7   # then open http://localhost:8080
 
 ## layout
 
-the go app lives at the repo root under `go/`; each rock version is a
-self-contained dir under `bonsai/<version>/` (currently `bonsai/1.7/`).
+each rock version is a self-contained dir under `bonsai/<version>/` (currently
+`bonsai/1.7/`) holding the go module, rockcraft.yaml, build scripts and tests --
+rockcraft only mounts the project subtree, so the go source lives alongside it.
 
-- `go/cmd/frontend`   -- pure-go htmx chat ui, proxies prompts to the evaluator
-- `go/cmd/evaluator`  -- loads the gguf (cgo -> llama.cpp), serves `POST /complete`
-- `go/internal/llama` -- minimal cgo wrapper over llama.cpp's C API
+- `bonsai/1.7/cmd/frontend`   -- pure-go htmx chat ui, proxies prompts to the evaluator
+- `bonsai/1.7/cmd/evaluator`  -- loads the gguf (cgo -> llama.cpp), serves `POST /complete`
+- `bonsai/1.7/internal/llama` -- minimal cgo wrapper over llama.cpp's C API
    - `llama_cgo.go`  (linux+cgo) real inference
    - `llama_stub.go` (everything else) so the go logic builds/vets on macos
 - `bonsai/1.7/rockcraft.yaml` -- the rock: bare base, 2 pebble services, llama.cpp libs
@@ -109,11 +110,10 @@ resolved unknowns:
   `llama_memory_clear`/`llama_get_memory`, `llama_model_chat_template`) -- unchanged.
 
 NOT yet validated (needs linux w/ network + rockcraft -- an lxc/vm):
-- pin `source-tag: bNNNN` in `rockcraft.yaml` to the exact llama.cpp build tag that
-  the known-good `llama-cpp-python` vendors (the version `bonsai.py` proved works)
 - `rockcraft pack` itself (part names, go plugin output path `/bin` vs `/usr/bin`,
-  bare-base staging of libc/loader; `source: ../../go` relative path resolving)
-- mainline llama.cpp building cleanly *inside* rockcraft's ubuntu build env
+  bare-base staging of libc/loader)
+- mainline llama.cpp @ `b10092` building cleanly *inside* rockcraft's ubuntu build env,
+  and loading the Q1_0 gguf there (bonsai.py proves it on the dev box, not yet in-rock)
 - skopeo consuming the hand-edited manifest (OCI validators are picky; the one lxc
   tried had no egress so apt-install skopeo failed)
 - bare-base dynamic-loader path (`/lib64/ld-linux-*.so.2`) resolving at runtime

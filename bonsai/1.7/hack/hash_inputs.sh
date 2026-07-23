@@ -6,8 +6,6 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."   # -> bonsai/1.7/
 
-REPO=$(cd ../.. && pwd)
-
 # local files under the version dir that shape the build
 LOCAL=(
     rockcraft.yaml
@@ -18,7 +16,7 @@ LOCAL=(
 
 {
     sha256sum "${LOCAL[@]}"
-    # go module sources (module `bonsai-rock` at repo root under go/)
-    find "$REPO/go" -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \
+    # go module sources (module `bonsai-rock`, now in the version dir)
+    find cmd internal go.mod -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \
         -o -name '*.html' -o -name '*.js' \) -print0 | sort -z | xargs -0 sha256sum
 } | sha256sum | cut -d' ' -f1

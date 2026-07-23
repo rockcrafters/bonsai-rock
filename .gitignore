@@ -11,7 +11,7 @@ bonsai-1.7B.oci
 
 # go build output
 /bin/
-/go/bin/
+bonsai/*/bin/
 
 # make stamps + spread scratch
 *.stamp

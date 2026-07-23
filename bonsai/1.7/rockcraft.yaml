@@ -30,12 +30,9 @@ parts:
     plugin: cmake
     # mainline llama.cpp loads bonsai's Q1_0 gguf directly -- verified via
     # bonsai.py, which runs the same quant through stock llama-cpp-python (a
-    # plain mainline build). no fork needed.
-    # TODO(pin): replace bNNNN with the llama.cpp build tag that the known-good
-    # llama-cpp-python vendors (read it off that release's notes) -- that exact
-    # version is the one proven to load the quant in bonsai.py.
+    # plain mainline build). no fork needed. pinned to a recent mainline release.
     source: https://github.com/ggml-org/llama.cpp.git
-    source-tag: bNNNN
+    source-tag: b10092
     cmake-parameters:
       - -DCMAKE_BUILD_TYPE=Release
       - -DCMAKE_INSTALL_PREFIX=/usr
@@ -61,9 +58,10 @@ parts:
     after:
       - llama
     plugin: go
-    # go sources live at the repo root under go/ (module `bonsai-rock`);
-    # this rockcraft.yaml sits two levels down at bonsai/1.7/.
-    source: ../../go
+    # go module (`bonsai-rock`) lives alongside this rockcraft.yaml in the
+    # version dir; rockcraft only mounts the project subtree, so the source
+    # must be local (a repo-root `go/` would be unreachable -- rockcraft#189).
+    source: .
     build-snaps:
       - go/1.22/stable
       #
