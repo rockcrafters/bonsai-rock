@@ -38,9 +38,15 @@ parts:
       - -DCMAKE_INSTALL_PREFIX=/usr
       - -DBUILD_SHARED_LIBS=ON
       - -DLLAMA_CURL=OFF
+      # we only need libllama.so + libggml*.so -- turn off every optional build.
+      # TOOLS gates the server/cli (their impl libs fail to link otherwise); UI
+      # defaults ON and would pull a web frontend build.
       - -DLLAMA_BUILD_TESTS=OFF
       - -DLLAMA_BUILD_EXAMPLES=OFF
+      - -DLLAMA_BUILD_TOOLS=OFF
       - -DLLAMA_BUILD_SERVER=OFF
+      - -DLLAMA_BUILD_APP=OFF
+      - -DLLAMA_BUILD_UI=OFF
       - -DGGML_NATIVE=OFF       # portable cpu build, no -march=native
       #
     build-packages:
