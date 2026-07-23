@@ -63,13 +63,17 @@ parts:
     # must be local (a repo-root `go/` would be unreachable -- rockcraft#189).
     source: .
     build-snaps:
-      - go/1.22/stable
+      # go.mod requires go 1.26; latest/stable is 1.26.x. a too-old snap makes
+      # the plugin's `go version` probe trip go's toolchain auto-download and
+      # fail validation ("invalid go compiler version 'go: downloading ...'").
+      - go/latest/stable
       #
     build-packages:
       - build-essential         # cgo needs a c/c++ toolchain
       #
     build-environment:
       - CGO_ENABLED: "1"
+      - GOTOOLCHAIN: local      # never fetch a toolchain over the network
       - CGO_CFLAGS: "-I${CRAFT_STAGE}/usr/include"
       - CGO_LDFLAGS: "-L${CRAFT_STAGE}/usr/lib -L${CRAFT_STAGE}/usr/lib/${CRAFT_ARCH_TRIPLET_BUILD_FOR}"
       #

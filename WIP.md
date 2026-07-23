@@ -64,8 +64,12 @@ surgery, since rockcraft can't place files into chosen layers.
       config chain, 5-layer ordering (4 chunks below app), digest/diff_id consistency,
       byte-exact reassembly of injected chunks
 - [x] `go vet` clean (stub + cgo tags), `GOOS=linux` cross-build ok
-- [x] rockcraft.yaml builds mainline llama.cpp @ `b10092` (fork dropped)
-- [x] go source local to the version dir (`source: .`) -- fixes rockcraft#189 parent-source
+- [x] rockcraft.yaml builds mainline llama.cpp @ `b10092` (fork dropped) --
+      **confirmed building in-rock** (CI pack got past the llama part)
+- [x] go source local to the version dir (`source: .`) -- fixes rockcraft#189 parent-source;
+      **confirmed pulling in-rock**
+- [x] go compiler: `go.mod` wants 1.26 -> build-snap `go/latest/stable` (1.26.x) +
+      `GOTOOLCHAIN=local`, else the plugin trips go's toolchain auto-download
 
 ## todo (needs a network-capable linux box w/ rockcraft -- CI now covers most)
 
