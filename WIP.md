@@ -79,7 +79,14 @@ surgery, since rockcraft can't place files into chosen layers.
 - [x] runtime: `LD_LIBRARY_PATH` covers both triplets (staged libstdc++/libgomp land there)
 - [x] `inject.sh`: `mkdir -p build/oci` before skopeo (fresh checkout has no `build/`;
       only worked locally b/c the dir lingered from prior runs)
-- [~] inject/skopeo + model download in CI: model fetch works; inject past step 1 unverified
+- [x] **full build pipeline green in CI (both arches)**: pack + model-layer inject
+      (skopeo surgery) + buildah multiarch + artifacts. bare-base rock **boots** under
+      pebble; `test_boot` (frontend serves page + htmx) passes.
+- [x] `test_chat` readiness: evaluator listens only after reassembly + 237M model load,
+      so the frontend proxy 500s ("connection refused") if hit at t=0. poll /send past
+      that phase (was firing instantly after only waiting on the frontend).
+- [~] `test_chat` real in-rock inference: fix pushed; whether generation itself works
+      in-rock (bare-base loader, ggml cpu at runtime) is what this finally proves.
 
 ## todo (needs a network-capable linux box w/ rockcraft -- CI now covers most)
 

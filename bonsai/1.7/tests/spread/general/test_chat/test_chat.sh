@@ -11,13 +11,24 @@ name=test_bonsai_chat
 ip=$(launch_rock chat)
 defer "docker logs $name 2>&1 | tail -80 || true; docker rm --force $name &>/dev/null || true" EXIT
 
-# frontend up
+# frontend up (instant -- no model)
 wait_http "http://$ip:8080/" 60 2
 
-# evaluator loads 237M of weights on first request -- give it room. the
-# frontend proxies with a 5-minute client timeout; match that here.
-reply=$(curl -fsS --max-time 330 -X POST "http://$ip:8080/send" \
-    --data-urlencode 'prompt=say hi in one word')
+# the evaluator reassembles the 4 chunks + loads the 237M gguf *before* it
+# listens on :8081, so until it's ready the frontend proxy gets a connection
+# refused and returns an inline "[error: ...connection refused...]". poll
+# /send past that phase; once the evaluator is up the call blocks on the (slow,
+# cpu) generation and returns the real reply. --max-time matches the frontend's
+# 5-min proxy timeout.
+reply=""
+for i in $(seq 1 40); do
+    reply=$(curl -fsS --max-time 330 -X POST "http://$ip:8080/send" \
+        --data-urlencode 'prompt=say hi in one word' || true)
+    case "$reply" in
+        *'connection refused'*) sleep 3; continue ;;  # evaluator still loading
+    esac
+    break
+done
 
 # the fragment carries both the echoed prompt and the bot reply div;
 # assert the bot div exists and is non-empty.
