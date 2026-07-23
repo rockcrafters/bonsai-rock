@@ -1,0 +1,66 @@
+project: bonsai
+
+path: /bonsai
+
+exclude:
+  - .github
+  - .git
+  - .vscode
+  - .cache
+  - build
+  - tests/spread/tmp
+  - "*.stamp"
+  - ".*.stamp"
+
+backends:
+  craft-adhoc:
+    type: adhoc
+    allocate: source hack/spread_allocate.sh
+    discard: source hack/spread_discard.sh
+    systems:
+      - ubuntu-26.04-arm64:
+          password: ubuntu
+          # TODO(lczyk): Enable multiple workers when supported
+          # workers: 2
+      - ubuntu-26.04-amd64:
+          password: ubuntu
+          # TODO(lczyk): Enable multiple workers when supported
+          # workers: 2
+
+suites:
+  tests/spread/general/:
+    summary: General integration tests
+
+    environment:
+      SHARED_LIBRARIES: $SPREAD_PATH/tests/spread/lib
+      PATH: $PATH:$SPREAD_PATH:$SHARED_LIBRARIES
+      TMPDIR: $SPREAD_PATH/tests/spread/tmp
+      IMAGE_NAME: spread-test-bonsai
+      # host-side path that backs /bonsai inside this test container,
+      # so bind mounts to inner containers (via shared docker socket)
+      # can be translated to a path the host docker daemon sees.
+      SPREAD_WORKDIR_HOST: /tmp/spread-bonsai
+
+    prepare: |
+      SPREAD_ENV_FILE="$SPREAD_PATH/spread.env"
+
+      # ensure there is only one rock file
+      rocks_found=$(ls $SPREAD_PATH/bonsai*.rock | wc -l)
+      if [ "$rocks_found" -ne 1 ]; then
+        echo "Expected exactly one craft artifact, found $rocks_found"
+        exit 1
+      fi
+      CRAFT_ARTIFACT=$(ls $SPREAD_PATH/bonsai*.rock)
+      echo "export CRAFT_ARTIFACT=$CRAFT_ARTIFACT" >> $SPREAD_ENV_FILE
+
+      skopeo --insecure-policy copy \
+        "oci-archive:$CRAFT_ARTIFACT" \
+        docker-daemon:$IMAGE_NAME:latest
+
+      mkdir -p "$TMPDIR"
+
+    restore: |
+      source "$SPREAD_PATH/spread.env"
+      docker image rm $IMAGE_NAME:latest --force || true
+
+kill-timeout: 1h

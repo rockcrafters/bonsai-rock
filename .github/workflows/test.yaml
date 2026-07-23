@@ -1,0 +1,56 @@
+name: Test
+
+# Reusable: runs spread against the per-arch injected rocks. Each runner
+# stays native (no qemu) -- amd64 runner exercises the amd64 rock against
+# the ubuntu-26.04-amd64 spread system; arm64 runner does the arm64 pair.
+# Expects the build workflow has already run in the same workflow run and
+# uploaded the bonsai_<version>_<arch> artefacts.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: rock version / dir under bonsai/ (e.g. 1.7)
+        required: true
+        type: string
+
+jobs:
+  spread:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download ${{ matrix.arch }} rock
+        uses: actions/download-artifact@v6
+        with:
+          name: bonsai_${{ inputs.version }}_${{ matrix.arch }}
+          path: bonsai/${{ inputs.version }}/
+
+      - name: Install spread + skopeo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+          go install github.com/canonical/spread/cmd/spread@latest
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      - name: Build sshd test image (${{ matrix.arch }} only)
+        run: |
+          cd bonsai/${{ inputs.version }}
+          make build-test-image PLATFORMS=${{ matrix.arch }}
+
+      - name: Run spread tests (${{ matrix.arch }})
+        run: |
+          cd bonsai/${{ inputs.version }}
+          # ensure rock is newer than .rock.stamp so make does not repack
+          touch bonsai_${{ inputs.version }}_*.rock
+          spread craft-adhoc:ubuntu-26.04-${{ matrix.arch }}

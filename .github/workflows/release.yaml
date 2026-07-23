@@ -1,0 +1,57 @@
+name: Release
+
+# Build + test + publish the rock to ghcr on push of a revision tag
+# (r1, r2, ...):
+#   - bonsai:1.7
+#
+# Dormant until a tag is pushed -- CI (ci.yaml) never publishes.
+on:
+  push:
+    tags:
+      - 'r[0-9]*'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yaml
+    with:
+      version: '1.7'
+
+  test:
+    needs: build
+    uses: ./.github/workflows/test.yaml
+    with:
+      version: '1.7'
+
+  publish-ghcr:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    needs: test
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # exact name (not a pattern) so only the multiarch oci-archive lands,
+      # not the per-arch artefacts (bonsai_1.7_amd64 / _arm64).
+      - name: Download multiarch rock
+        uses: actions/download-artifact@v6
+        with:
+          name: bonsai_1.7
+          path: artifacts
+
+      - name: Install Skopeo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+
+      - name: Publish to GitHub Container Registry
+        run: |
+          skopeo copy \
+            --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
+            --multi-arch=all \
+            oci-archive:artifacts/bonsai_1.7.rock \
+            docker://${{ env.REGISTRY }}/${{ github.repository }}/bonsai:1.7

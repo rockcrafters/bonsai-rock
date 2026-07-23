@@ -1,0 +1,115 @@
+name: bonsai
+title: bonsai-1.7B-rock
+summary: bonsai-1.7B cpu inference with a tiny htmx chat frontend
+description: |
+  a bare-base canonical rock running two pebble services:
+    - evaluator: loads the bonsai-1.7B gguf and serves single-turn completions
+    - frontend:  a minimal htmx chat client that proxies to the evaluator
+
+  bind a host port to the frontend (default 8080) to get a chat ui.
+
+  the model itself is NOT built into this rock by rockcraft. it is injected
+  afterwards as 4 separate oci layers under /usr/share/bonsai/*.part[0-3]
+  (see scripts/inject-layers.sh) so the 237M weights download in parallel and
+  stay cached across app rebuilds. the evaluator reassembles them on startup.
+license: Apache-2.0
+version: "1.7"
+
+# bare = no os layer. we hand-stage the exact runtime libs the cgo binaries need.
+base: bare
+build-base: ubuntu@22.04
+
+platforms:
+  amd64:
+  # arm64:   # enable for a second build (this mac is arm64); doubles llama build time
+  #
+
+parts:
+  # ---- llama.cpp as shared libs (dynamic link, per the design) --------------
+  llama:
+    plugin: cmake
+    # the PrismML fork carries the Q1_0 (1-bit g128) kernels + qwen3 support that
+    # bonsai's gguf needs. mainline llama.cpp cannot load this quant (ggml type 41
+    # / file_type 40). pinned to the commit validated locally on 2026-07-22.
+    source: https://github.com/PrismML-Eng/llama.cpp.git
+    source-commit: 7529fdaaf99ffdc5ca71ace9c7409a56b27ad92f
+    cmake-parameters:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/usr
+      - -DBUILD_SHARED_LIBS=ON
+      - -DLLAMA_CURL=OFF
+      - -DLLAMA_BUILD_TESTS=OFF
+      - -DLLAMA_BUILD_EXAMPLES=OFF
+      - -DLLAMA_BUILD_SERVER=OFF
+      - -DGGML_NATIVE=OFF       # portable cpu build, no -march=native
+      #
+    build-packages:
+      - build-essential
+      - libgomp1
+      #
+    prime:
+      - usr/include/**          # headers consumed at build by the evaluator part
+      - usr/lib/libllama.so*
+      - usr/lib/libggml*.so*
+      #
+
+  # ---- the two go services --------------------------------------------------
+  services:
+    after:
+      - llama
+    plugin: go
+    # go sources live at the repo root under go/ (module `bonsai-rock`);
+    # this rockcraft.yaml sits two levels down at bonsai/1.7/.
+    source: ../../go
+    build-snaps:
+      - go/1.22/stable
+      #
+    build-packages:
+      - build-essential         # cgo needs a c/c++ toolchain
+      #
+    build-environment:
+      - CGO_ENABLED: "1"
+      - CGO_CFLAGS: "-I${CRAFT_STAGE}/usr/include"
+      - CGO_LDFLAGS: "-L${CRAFT_STAGE}/usr/lib -L${CRAFT_STAGE}/usr/lib/${CRAFT_ARCH_TRIPLET_BUILD_FOR}"
+      #
+    organize:
+      bin/evaluator: usr/bin/evaluator
+      bin/frontend: usr/bin/frontend
+    stage:
+      - usr/bin/evaluator
+      - usr/bin/frontend
+      #
+
+  # ---- runtime libs the bare base lacks (bundled, as agreed) ----------------
+  runtime-libs:
+    plugin: nil
+    stage-packages:
+      - libc6                   # glibc + dynamic loader (bare has none)
+      - libstdc++6              # llama.cpp is c++
+      - libgomp1                # openmp runtime used by ggml
+      #
+
+# pebble services. evaluator loads the model, frontend serves the ui.
+services:
+  evaluator:
+    override: replace
+    command: /usr/bin/evaluator
+    startup: enabled
+    environment:
+      BONSAI_EVAL_ADDR: ":8081"
+      BONSAI_MODEL_DIR: /usr/share/bonsai
+      BONSAI_MODEL: /var/lib/bonsai/model.gguf
+      BONSAI_CTX: "1024"
+      BONSAI_MAX_TOKENS: "256"
+      LD_LIBRARY_PATH: /usr/lib:/usr/lib/x86_64-linux-gnu
+
+  frontend:
+    override: replace
+    command: /usr/bin/frontend
+    startup: enabled
+    after:
+      - evaluator
+    environment:
+      BONSAI_FRONTEND_ADDR: ":8080"
+      BONSAI_EVAL_URL: http://127.0.0.1:8081
+      LD_LIBRARY_PATH: /usr/lib:/usr/lib/x86_64-linux-gnu

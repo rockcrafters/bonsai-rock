@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# full stack: POST a prompt to the frontend's /send, which proxies to the
+# evaluator, which reassembles the 4 model chunks, loads the gguf and
+# generates a reply. exercises the whole rock end to end -- the WIP's
+# "actually run the rock, bind :8080, chat" item.
+
+source common.sh
+source defer.sh
+
+name=test_bonsai_chat
+ip=$(launch_rock chat)
+defer "docker logs $name 2>&1 | tail -80 || true; docker rm --force $name &>/dev/null || true" EXIT
+
+# frontend up
+wait_http "http://$ip:8080/" 60 2
+
+# evaluator loads 237M of weights on first request -- give it room. the
+# frontend proxies with a 5-minute client timeout; match that here.
+reply=$(curl -fsS --max-time 330 -X POST "http://$ip:8080/send" \
+    --data-urlencode 'prompt=say hi in one word')
+
+# the fragment carries both the echoed prompt and the bot reply div;
+# assert the bot div exists and is non-empty.
+printf '%s' "$reply" | grep -q 'class="msg bot"'
+bot=$(printf '%s' "$reply" | sed -n 's/.*class="msg bot">\(.*\)<\/div>.*/\1/p')
+[ -n "$bot" ] || { printf 'empty bot reply: %s\n' "$reply" >&2; exit 1; }
+# a runtime eval error is surfaced inline as [error: ...] -- fail on it.
+case "$bot" in
+    \[error:*) printf 'evaluator error: %s\n' "$bot" >&2; exit 1 ;;
+esac

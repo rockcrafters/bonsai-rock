@@ -1,0 +1,2 @@
+summary: End-to-end chat -- prompt through the frontend, real model reply
+execute: bash -ex test_chat.sh

@@ -1,0 +1,106 @@
+name: Build
+
+# Reusable: builds per-arch rocks and stitches a multiarch manifest.
+# Parametrised by `version` -- the rock dir is bonsai/<version>, the
+# rockcraft version is <version>, and the artefacts are named
+# bonsai_<version>...
+#
+# Unlike a plain rock, the model is NOT packed by rockcraft. Each per-arch
+# job packs the base rock (craft-actions), fetches the gguf, then splices
+# the 4 model-chunk layers in below the app layer via hack/inject.sh.
+#
+# Artefacts uploaded (for version=1.7):
+#   - bonsai_1.7_amd64  -> bonsai/1.7/bonsai_1.7_amd64.rock (injected, amd64)
+#   - bonsai_1.7_arm64  -> bonsai/1.7/bonsai_1.7_arm64.rock (injected, arm64)
+#   - bonsai_1.7        -> bonsai_1.7.rock  (multiarch oci-archive)
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: rock version / dir under bonsai/ (e.g. 1.7)
+        required: true
+        type: string
+
+jobs:
+  build-per-arch:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Cache the model download
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: bonsai-model-${{ inputs.version }}
+
+      - name: Build base rock (no model)
+        uses: canonical/craft-actions/rockcraft-pack@main
+        with:
+          path: bonsai/${{ inputs.version }}
+          verbosity: brief
+
+      - name: Install skopeo + jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo jq
+
+      - name: Fetch model + inject layers
+        working-directory: bonsai/${{ inputs.version }}
+        run: |
+          base=$(ls bonsai_${{ inputs.version }}_*.rock)
+          echo "base rock: $base"
+          MODEL=$(hack/download-model.sh)
+          MODEL="$MODEL" SKOPEO=skopeo hack/inject.sh "$base" injected.rock
+          rm -f "$base"
+          mv injected.rock bonsai_${{ inputs.version }}_${{ matrix.arch }}.rock
+
+      - name: Save the injected rock as a pipeline artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: bonsai_${{ inputs.version }}_${{ matrix.arch }}
+          path: bonsai/${{ inputs.version }}/bonsai_${{ inputs.version }}_${{ matrix.arch }}.rock
+
+  build-multiarch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: build-per-arch
+    steps:
+      - name: Download rock artifacts
+        uses: actions/download-artifact@v6
+        with:
+          pattern: bonsai_${{ inputs.version }}_*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create multiarch rock
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y buildah
+          ls -lha artifacts
+          buildah manifest create multiarch-rock
+          buildah manifest add \
+            --arch amd64 \
+            multiarch-rock oci-archive:artifacts/bonsai_${{ inputs.version }}_amd64.rock
+          buildah manifest add \
+            --arch arm64 \
+            multiarch-rock oci-archive:artifacts/bonsai_${{ inputs.version }}_arm64.rock
+          buildah manifest push \
+            --format oci \
+            --all \
+            multiarch-rock oci-archive:bonsai_${{ inputs.version }}.rock
+
+      - name: Upload multiarch rock
+        uses: actions/upload-artifact@v6
+        with:
+          name: bonsai_${{ inputs.version }}
+          path: bonsai_${{ inputs.version }}.rock

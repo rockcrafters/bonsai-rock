@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bonsai chat</title>
+<script src="/static/htmx.min.js"></script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 44rem; margin: 0 auto; padding: 1rem; }
+  h1 { font-size: 1.1rem; opacity: .7; font-weight: 600; }
+  #log { display: flex; flex-direction: column; gap: .75rem; margin: 1rem 0; }
+  .msg { padding: .5rem .75rem; border-radius: .5rem; white-space: pre-wrap; word-wrap: break-word; }
+  .user { background: color-mix(in srgb, currentColor 8%, transparent); align-self: flex-end; max-width: 85%; }
+  .bot  { background: color-mix(in srgb, currentColor 14%, transparent); align-self: flex-start; max-width: 85%; }
+  form { display: flex; gap: .5rem; position: sticky; bottom: 0; padding: .5rem 0; background: Canvas; }
+  input[name=prompt] { flex: 1; padding: .5rem .75rem; border-radius: .5rem; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); background: Canvas; color: CanvasText; }
+  button { padding: .5rem 1rem; border-radius: .5rem; border: 0; background: color-mix(in srgb, currentColor 20%, transparent); color: CanvasText; cursor: pointer; }
+  button:disabled { opacity: .5; }
+  .htmx-request #spin { display: inline; }
+  #spin { display: none; opacity: .6; }
+</style>
+</head>
+<body>
+<h1>bonsai-1.7B</h1>
+<div id="log"></div>
+<form hx-post="/send" hx-target="#log" hx-swap="beforeend" hx-on::after-request="this.reset()">
+  <input name="prompt" placeholder="say something..." autocomplete="off" autofocus required>
+  <button type="submit">send</button>
+</form>
+<p id="spin">thinking...</p>
+</body>
+</html>

@@ -1,0 +1,28 @@
+name: CI
+run-name: CI for ${{ github.ref }}
+
+# Build + test on PR and on push to main. No publishing.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Cancel an in-flight run on the same ref when a newer one starts
+# (e.g. force-push to a PR branch).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yaml
+    with:
+      version: '1.7'
+
+  test:
+    needs: build
+    uses: ./.github/workflows/test.yaml
+    with:
+      version: '1.7'

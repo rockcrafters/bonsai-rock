@@ -1,0 +1,2 @@
+summary: Rock boots under pebble and the frontend serves the chat page
+execute: bash -ex test_boot.sh

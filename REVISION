@@ -1,0 +1,4 @@
+# REVISION file for bonsai-rock
+# tags: bonsai-1.7
+# bump + tag `r<N>` to publish (release.yaml). r0 = unreleased.
+r0
