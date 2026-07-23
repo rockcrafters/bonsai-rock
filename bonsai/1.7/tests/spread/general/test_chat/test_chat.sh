@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # full stack: POST a prompt to the frontend's /send, which calls llama-server's
-# OpenAI api, which was started on the gguf reassembled from the 4 model chunks.
-# exercises the whole rock end to end -- the WIP's "actually run the rock, bind
-# :8080, chat" item.
+# OpenAI api, running on the gguf shards loaded straight from their oci layers.
+# exercises the whole rock end to end.
 
 source common.sh
 source defer.sh
@@ -14,12 +13,11 @@ defer "docker logs $name 2>&1 | tail -80 || true; docker rm --force $name &>/dev
 # frontend up (instant -- no model)
 wait_http "http://$ip:8080/" 60 2
 
-# llmserve reassembles the 4 chunks and llama-server then loads the 237M gguf
-# before it listens on :8082, so until it's ready the frontend gets a connection
-# refused and returns an inline "[error: ...connection refused...]". poll /send
-# past that phase; once the llm service is up the call blocks on the (slow, cpu)
-# generation and returns the real reply. --max-time matches the frontend's 5-min
-# proxy timeout.
+# llama-server loads the model before it listens on :8082, so until it's ready
+# the frontend gets a connection refused and returns an inline
+# "[error: ...connection refused...]". poll /send past that phase; once the llm
+# service is up the call blocks on the (slow, cpu) generation and returns the
+# real reply. --max-time matches the frontend's 5-min proxy timeout.
 reply=""
 for i in $(seq 1 40); do
     reply=$(curl -fsS --max-time 330 -X POST "http://$ip:8080/send" \

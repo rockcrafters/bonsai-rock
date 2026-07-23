@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# the `llm` service (llmserve -> llama-server) must expose an OpenAI-compatible
-# api on :8082 -- what makes the rock usable as a local model for opencode et al.
+# the `llm` service (llama-server) must expose an OpenAI-compatible api on
+# :8082 -- what makes the rock usable as a local model for opencode et al.
+# also proves llama.cpp loads the gguf-split shards from their oci layers when
+# pointed at shard 1, with nothing reassembling them.
 
 source common.sh
 source defer.sh
@@ -9,8 +11,7 @@ name=test_bonsai_openai
 ip=$(launch_rock openai)
 defer "docker logs $name 2>&1 | tail -80 || true; docker rm --force $name &>/dev/null || true" EXIT
 
-# llama-server reassembles the chunks + loads the gguf before it answers, so
-# give it the same room the chat test gets.
+# llama-server loads the model before it answers; give it room.
 wait_http "http://$ip:8082/v1/models" 60 3
 
 # the alias we set (BONSAI_LLM_ALIAS) is the model id clients configure
