@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # inject.sh -- take an already-packed base rock (oci-archive) and produce a
 # final oci-archive with the gguf shards spliced in as layers below the app
-# content layer. this is the half of build.sh that runs *after* the rock is
+# content layer. this is the half of the pipeline that runs *after* the rock is
 # packed, so CI (which packs via the craft-actions rockcraft-pack action) can
 # reuse it without re-packing.
 #
@@ -26,7 +26,7 @@ mkdir -p build/oci          # skopeo oci: transport needs the parent dir to exis
 "$SKOPEO" copy "oci-archive:$ROCK" "oci:build/oci:$IMG_TAG"
 
 printf '== 2/3 inject model shard layers ==\n'
-hack/inject-layers.sh build/oci "$IMG_TAG" "$SHARD_DIR" usr/share/bonsai
+hack/inject-layers.rb build/oci "$IMG_TAG" "$SHARD_DIR" usr/share/bonsai
 
 printf '== 3/3 oci layout -> oci-archive (%s) ==\n' "$OUT"
 rm -f "$OUT"

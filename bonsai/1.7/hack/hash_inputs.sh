@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."   # -> bonsai/1.7/
 # rock definition and the scripts that assemble it.
 LOCAL=(
     rockcraft.yaml
-    hack/inject-layers.sh
+    hack/inject-layers.rb
     hack/inject.sh
     hack/download-model.sh
     hack/split-model.sh

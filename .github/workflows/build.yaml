@@ -51,10 +51,12 @@ jobs:
           path: bonsai/${{ inputs.version }}
           verbosity: brief
 
-      - name: Install skopeo + jq
+      # jq is no longer needed: the layer surgery is ruby (stdlib json), and
+      # ruby ships on the runners.
+      - name: Install skopeo
         run: |
           sudo apt-get update
-          sudo apt-get install -y skopeo jq
+          sudo apt-get install -y skopeo
 
       - name: Fetch + split model, inject shard layers
         working-directory: bonsai/${{ inputs.version }}
