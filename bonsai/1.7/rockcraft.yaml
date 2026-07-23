@@ -21,8 +21,8 @@ build-base: ubuntu@22.04
 
 platforms:
   amd64:
-  # arm64:   # enable for a second build (this mac is arm64); doubles llama build time
-  #
+  arm64:     # each CI runner is native for its arch, so no cross-build/qemu.
+  #          # llama.cpp is built per-arch (roughly doubles total build time).
 
 parts:
   # ---- llama.cpp as shared libs (dynamic link, per the design) --------------
