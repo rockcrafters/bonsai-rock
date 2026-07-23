@@ -1,8 +1,8 @@
 # bonsai-1.7B-rock
 
 a bare-base [canonical rock](https://documentation.ubuntu.com/rockcraft/) that runs
-[bonsai-1.7B](https://huggingface.co/prism-ml/Bonsai-1.7B-gguf) on cpu and serves a
-tiny htmx chat client. bind a host port, get a chat window.
+[bonsai-1.7B](https://huggingface.co/prism-ml/Bonsai-1.7B-gguf) on cpu. bind a host
+port, get a chat window -- and an OpenAI-compatible API on the same port.
 
 ```
 docker run --rm -p 8080:8080 bonsai:1.7   # then open http://localhost:8080
@@ -11,11 +11,10 @@ docker run --rm -p 8080:8080 bonsai:1.7   # then open http://localhost:8080
 ## layout
 
 each rock version is a self-contained dir under `bonsai/<version>/` (currently
-`bonsai/1.7/`) holding the go module, rockcraft.yaml, build scripts and tests --
-rockcraft only mounts the project subtree, so the go source lives alongside it.
+`bonsai/1.7/`). there is **no application source**: the rock is llama.cpp plus
+the model, injected as oci layers. everything here is build machinery.
 
-- `bonsai/1.7/cmd/frontend`   -- pure-go htmx chat ui, calls the llm service's OpenAI api
-- `bonsai/1.7/rockcraft.yaml` -- the rock: bare base, 2 pebble services, llama.cpp libs
+- `bonsai/1.7/rockcraft.yaml` -- the rock: bare base, one pebble service, llama.cpp
 - `bonsai/1.7/hack/inject-layers.sh` -- one oci layer per gguf shard (the interesting bit)
 - `bonsai/1.7/hack/build.sh` -- fetch+split model -> pack -> convert -> inject -> oci-archive
 - `bonsai/1.7/hack/download-model.sh` -- pulls the gguf from huggingface into `.cache/`
@@ -23,47 +22,39 @@ rockcraft only mounts the project subtree, so the go source lives alongside it.
 - `bonsai/1.7/{makefile,spread.yaml,tests/spread}` -- local build + spread integration tests
 - `.github/workflows/` -- CI: build (per-arch pack + inject, buildah multiarch) + spread test
 
-## the two services
+## the one service
 
-both run under pebble (every rock's entrypoint):
+`llama-server` runs under pebble (every rock's entrypoint) and serves everything
+on `:8080`:
 
-- **llm** (`:8082`) llama.cpp's `llama-server` on the gguf -- does all the
-  inference, and exposes an OpenAI-compatible API (see below).
-- **frontend** (`:8080`, the port you bind) serves the chat ui + vendored htmx,
-  posts each turn to the llm service, swaps the reply into the log.
+- `/` -- llama.cpp's built-in chat web ui
+- `/v1/models`, `/v1/chat/completions` -- OpenAI-compatible API, incl. streaming
+  and tool-calls
 
-there is deliberately no hand-rolled inference service: `llama-server` already
-does it, with streaming and tool-calls. the go side is pure (`CGO_ENABLED=0`)
-static binaries -- no cgo, no C toolchain, nothing linking llama.cpp.
+nothing here is hand-rolled. earlier revisions carried a go evaluator (cgo ->
+llama.cpp) and an htmx frontend; both were deleted once `llama-server` was in the
+image doing the same jobs properly. the rock now ships zero first-party code.
 
 ## using it as a local OpenAI-compatible LLM
 
-bind `:8082` and point any OpenAI-compatible client at it:
-
 ```
-docker run --rm -p 8080:8080 -p 8082:8082 bonsai:1.7
-curl http://localhost:8082/v1/models
+docker run --rm -p 8080:8080 bonsai:1.7
+curl http://localhost:8080/v1/models
 ```
 
-- base url: `http://localhost:8082/v1`
+- base url: `http://localhost:8080/v1`
 - model id: `bonsai-1.7b`
-- `/v1/chat/completions` incl. streaming, courtesy of `llama-server`
 
-the `llm` service runs `llama-server` directly, so its port / context size /
-alias are flags on the service `command:` in `rockcraft.yaml` (currently
-`--port 8082 --ctx-size 8192 --alias bonsai-1.7b`) rather than env vars --
-change them there, or override the service with a pebble layer. the frontend
-still takes `BONSAI_MAX_TOKENS`, `BONSAI_TEMP` and `BONSAI_SYSTEM` for the
-requests it sends.
+port, context size and alias are flags on the service `command:` in
+`rockcraft.yaml` (currently `--port 8080 --ctx-size 8192 --alias bonsai-1.7b`)
+rather than env vars -- change them there, or override the service with a pebble
+layer.
 
 > **expectations.** bonsai-1.7B at `Q1_0` is 1.125 bpw on a 1.7B model. it will
 > answer, but agentic coding clients (opencode et al) lean hard on
 > instruction-following and tool-calling, which a model this small and this
 > heavily quantised does poorly. treat this as "the wiring works", not as a
 > usable local coding model.
-
-there is no wrapper process: `llama-server` is the service command, pointed
-straight at shard 1 in its oci layer.
 
 ## the model is not in the rock (by design)
 
@@ -109,9 +100,9 @@ command, so the script fails the build if a split ever yields a different number
 
 ## building
 
-**must build on linux** (rockcraft is linux-only; this repo was developed on macos
-where only the go frontend + the injection script can be exercised). on a machine
-with rockcraft:
+**must build on linux** (rockcraft is linux-only; on macos only the model
+download/split and the injection script can be exercised). on a machine with
+rockcraft:
 
 ```
 cd bonsai/1.7
@@ -135,13 +126,15 @@ root (or in `.cache/`) to skip the download.
 
 validated in CI (both amd64 and arm64), via the spread suite:
 - `rockcraft pack`, the 4-layer model injection, the buildah multiarch stitch
-- the rock boots under pebble and the frontend serves its page + vendored htmx
-- **real inference end to end**: prompt -> frontend -> llama-server -> reply
+- the rock boots under pebble and serves a chat ui + real inference end to end
+
+> note: CI proved the above against the previous architecture (a go frontend in
+> front of `llama-server`). the move to `llama-server` alone -- its embedded web
+> ui, one service, no first-party code -- has not had a green run yet.
 
 validated on the macos dev box:
 - `bonsai.py` runs the same Q1_0 gguf through stock `llama-cpp-python` (a plain
   **mainline** llama.cpp build) and works -- so no fork is needed (see below).
-- go binaries build; `go vet` clean; `GOOS=linux` cross-build ok
 - `inject-layers.sh` end-to-end on a synthetic oci layout: blob integrity, chain
   resolution, 5-layer ordering, digest/diff_id consistency
 - **the shard scheme itself**: `llama-gguf-split` at the pinned tag produces 4
@@ -156,6 +149,10 @@ resolved unknowns:
 NOT yet validated:
 - the `llm` service in-rock -- that `llama-server` builds there, and loads the
   shards from their oci layers. covered by `tests/spread/general/test_openai_api`.
+- **the embedded web ui** -- `LLAMA_BUILD_UI=ON` relies on `LLAMA_USE_PREBUILT_UI`
+  fetching the prebuilt front end from a HuggingFace bucket at build time. that is
+  a build-time network dependency; if the bucket is unavailable the build may fall
+  back to needing a javascript toolchain. covered by `tests/spread/general/test_boot`.
 
 ## known risk hotspots
 
