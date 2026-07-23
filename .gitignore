@@ -4,13 +4,10 @@ build/
 *.oci
 bonsai-1.7B.oci
 
-# model weights (downloaded to .cache/, injected at build, never committed)
+# model weights + gguf shards (downloaded/split into .cache/, injected at
+# build, never committed)
 .cache/
 *.gguf
-*.gguf.part*
-
-# go build output
-bonsai/*/bin/
 
 # make stamps + spread scratch
 *.stamp

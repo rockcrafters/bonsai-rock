@@ -6,7 +6,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."   # -> bonsai/1.7/
 
-# local files under the version dir that shape the build
+# everything that shapes the build. there is no application source any more --
+# the rock is llama.cpp plus the injected model layers -- so this is just the
+# rock definition and the scripts that assemble it.
 LOCAL=(
     rockcraft.yaml
     hack/inject-layers.sh
@@ -15,11 +17,4 @@ LOCAL=(
     hack/split-model.sh
 )
 
-{
-    sha256sum "${LOCAL[@]}"
-    # go module sources + embedded assets, wherever they sit under the version
-    # dir (kept layout-agnostic so moving packages around doesn't break this).
-    find . -path ./build -prune -o -type f \( -name '*.go' -o -name 'go.mod' \
-        -o -name 'go.sum' -o -name '*.html' -o -name '*.js' \) -print0 \
-        | sort -z | xargs -0 sha256sum
-} | sha256sum | cut -d' ' -f1
+sha256sum "${LOCAL[@]}" | sha256sum | cut -d' ' -f1
