@@ -15,8 +15,8 @@ each rock version is a self-contained dir under `bonsai/<version>/` (currently
 the model, injected as oci layers. everything here is build machinery.
 
 - `bonsai/1.7/rockcraft.yaml` -- the rock: bare base, one pebble service, llama.cpp
-- `bonsai/1.7/hack/inject-layers.sh` -- one oci layer per gguf shard (the interesting bit)
-- `bonsai/1.7/hack/build.sh` -- fetch+split model -> pack -> convert -> inject -> oci-archive
+- `bonsai/1.7/hack/inject-layers.rb` -- one oci layer per gguf shard (the interesting bit)
+- `bonsai/1.7/hack/inject.sh` -- skopeo convert -> inject-layers -> repack
 - `bonsai/1.7/hack/download-model.sh` -- pulls the gguf from huggingface into `.cache/`
 - `bonsai/1.7/hack/split-model.sh` -- shards it with the pinned `llama-gguf-split`
 - `bonsai/1.7/{makefile,spread.yaml,tests/spread}` -- local build + spread integration tests
@@ -62,16 +62,20 @@ rockcraft packs app content into one squashed layer and gives you no control ove
 which file lands in which layer. we want the **237M** of weights in their own layers
 so they (a) download as parallel blobs and (b) stay cached when only the app changes.
 
-so `build.sh` does it after packing:
+so `make build` does it after packing:
 
 0. `download-model.sh` fetches the gguf from huggingface into `.cache/`, then
    `split-model.sh` shards it with `llama-gguf-split` (both idempotent + cached)
 1. `rockcraft pack` -> `bonsai_1.7_amd64.rock` (an oci-archive), no model in it
 2. `hack/inject.sh`: `skopeo copy oci-archive:... oci:build/oci` -> an oci layout on disk
-3. `inject-layers.sh` tars+gzips each shard into its own layer at
+3. `inject-layers.rb` tars+gzips each shard into its own layer at
    `/usr/share/bonsai/model-0000N-of-00004.gguf`, and splices them into the
    manifest + config **just below the app content layer** (manifest/diff_id surgery)
 4. `skopeo copy oci:build/oci oci-archive:bonsai_1.7.rock` -> final image
+
+step 3 is the only piece with real logic -- json array splicing and digest
+bookkeeping -- so it is ruby (stdlib `json`/`digest`/`zlib`, no gems, no `jq`).
+everything else is process orchestration and stays shell.
 
 CI (`.github/workflows/build.yaml`) does the same, but packs the base rock with the
 `canonical/craft-actions/rockcraft-pack` action and then runs `split-model.sh` +
@@ -79,7 +83,7 @@ CI (`.github/workflows/build.yaml`) does the same, but packs the base rock with 
 
 why not `umoci raw add-layer`: it only appends on **top**. placing layers *below*
 the app layer needs editing the layer + `diff_ids` ordering directly, which the
-script does with `jq` + `sha256sum` + `tar`.
+script does directly (ruby stdlib json + digest, plus `tar`).
 
 **the shards are real ggufs, not byte slices.** `gguf-split` writes each one as a
 valid gguf carrying split metadata, so llama.cpp loads the whole set when pointed
@@ -135,7 +139,7 @@ validated in CI (both amd64 and arm64), via the spread suite:
 validated on the macos dev box:
 - `bonsai.py` runs the same Q1_0 gguf through stock `llama-cpp-python` (a plain
   **mainline** llama.cpp build) and works -- so no fork is needed (see below).
-- `inject-layers.sh` end-to-end on a synthetic oci layout: blob integrity, chain
+- `inject-layers.rb` end-to-end on a synthetic oci layout: blob integrity, chain
   resolution, 5-layer ordering, digest/diff_id consistency
 - **the shard scheme itself**: `llama-gguf-split` at the pinned tag produces 4
   balanced shards (67/61/60/58M), and `llama-server --model ...-00001-of-00004.gguf`
