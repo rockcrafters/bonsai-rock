@@ -1,10 +1,4 @@
-// Package model handles turning the shipped model chunks back into a gguf.
-//
-// the weights ride in as 4 separate oci layers at <dir>/*.part[0-3] -- raw byte
-// slices of the original file, not gguf-split shards -- so they must be
-// concatenated before llama.cpp can load them. both the evaluator and the
-// llama-server wrapper call Reassemble on startup.
-package model
+package main
 
 import (
 	"errors"
@@ -15,14 +9,18 @@ import (
 	"sort"
 )
 
-// Reassemble concatenates <dir>/*.part* into dst in lexical order. It is a
+// reassemble concatenates <dir>/*.part* into dst in lexical order. It is a
 // no-op if dst already exists and is non-empty (the writable layer caches it
 // across restarts).
 //
-// Safe to run from two processes at once: each writes its own uniquely-named
-// temp file and renames it into place atomically, so the worst case is a
-// duplicated write on first boot, never a torn file.
-func Reassemble(dir, dst string) error {
+// The weights ride in as 4 separate oci layers -- raw byte slices of the
+// original file, not gguf-split shards -- so they must be concatenated before
+// llama.cpp can load them.
+//
+// Writes to a uniquely-named temp then renames, so a crash mid-write never
+// leaves a partial file that the size check above would wrongly accept, and two
+// processes assembling at once cannot clobber each other.
+func reassemble(dir, dst string) error {
 	if fi, err := os.Stat(dst); err == nil && fi.Size() > 0 {
 		log.Printf("model already assembled at %s (%d bytes)", dst, fi.Size())
 		return nil
@@ -40,9 +38,6 @@ func Reassemble(dir, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	// unique temp + rename: a crash mid-write never leaves a partial file that
-	// the size check above would wrongly accept, and concurrent writers cannot
-	// clobber each other's temp.
 	out, err := os.CreateTemp(filepath.Dir(dst), filepath.Base(dst)+".tmp")
 	if err != nil {
 		return err

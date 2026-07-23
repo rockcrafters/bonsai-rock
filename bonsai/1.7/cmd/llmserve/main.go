@@ -14,8 +14,6 @@ import (
 	"os"
 	"strings"
 	"syscall"
-
-	"bonsai-rock/internal/model"
 )
 
 func main() {
@@ -29,7 +27,7 @@ func main() {
 		alias     = env("BONSAI_LLM_ALIAS", "bonsai-1.7b")
 	)
 
-	if err := model.Reassemble(partDir, modelPath); err != nil {
+	if err := reassemble(partDir, modelPath); err != nil {
 		log.Fatalf("model reassembly: %v", err)
 	}
 

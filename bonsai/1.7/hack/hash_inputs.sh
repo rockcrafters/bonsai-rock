@@ -16,7 +16,9 @@ LOCAL=(
 
 {
     sha256sum "${LOCAL[@]}"
-    # go module sources (module `bonsai-rock`, now in the version dir)
-    find cmd internal go.mod -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \
-        -o -name '*.html' -o -name '*.js' \) -print0 | sort -z | xargs -0 sha256sum
+    # go module sources + embedded assets, wherever they sit under the version
+    # dir (kept layout-agnostic so moving packages around doesn't break this).
+    find . -path ./build -prune -o -type f \( -name '*.go' -o -name 'go.mod' \
+        -o -name 'go.sum' -o -name '*.html' -o -name '*.js' \) -print0 \
+        | sort -z | xargs -0 sha256sum
 } | sha256sum | cut -d' ' -f1

@@ -16,7 +16,6 @@ rockcraft only mounts the project subtree, so the go source lives alongside it.
 
 - `bonsai/1.7/cmd/frontend`   -- pure-go htmx chat ui, calls the llm service's OpenAI api
 - `bonsai/1.7/cmd/llmserve`   -- reassembles the chunks, then execs `llama-server`
-- `bonsai/1.7/internal/model` -- shared, idempotent chunk reassembly
 - `bonsai/1.7/rockcraft.yaml` -- the rock: bare base, 2 pebble services, llama.cpp libs
 - `bonsai/1.7/hack/inject-layers.sh` -- splits the gguf into 4 oci layers (the interesting bit)
 - `bonsai/1.7/hack/build.sh` -- fetch model -> pack -> convert -> inject -> oci-archive

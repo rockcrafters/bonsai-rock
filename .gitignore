@@ -10,7 +10,6 @@ bonsai-1.7B.oci
 *.gguf.part*
 
 # go build output
-/bin/
 bonsai/*/bin/
 
 # make stamps + spread scratch
