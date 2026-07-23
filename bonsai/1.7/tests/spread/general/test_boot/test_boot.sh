@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# boot the rock (pebble entrypoint, evaluator + frontend services) and
-# check the frontend serves its page + the vendored htmx asset. no model
-# inference here -- that is test_chat's job.
+# boot the rock (single pebble service: llama-server) and check it serves its
+# embedded chat web ui on :8080. generation itself is test_openai_api's job.
 
 source common.sh
 source defer.sh
@@ -10,12 +9,10 @@ name=test_bonsai_boot
 ip=$(launch_rock boot)
 defer "docker logs $name 2>&1 | tail -50 || true; docker rm --force $name &>/dev/null || true" EXIT
 
-# frontend listens on :8080; give the services a moment to come up.
-wait_http "http://$ip:8080/" 60 2
+# llama-server loads the model before it listens, so allow for that.
+wait_http "http://$ip:8080/" 60 3
 
-# the page and its title marker
-curl -fsS "http://$ip:8080/" | grep -q '<h1>bonsai-1.7B</h1>'
-curl -fsS "http://$ip:8080/" | grep -q '<title>bonsai chat</title>'
-
-# vendored htmx served locally (no runtime CDN)
-curl -fsS "http://$ip:8080/static/htmx.min.js" | grep -qi 'htmx'
+# the built-in ui is served at the root. assert it is html rather than matching
+# upstream's markup, which is theirs to change.
+curl -fsS "http://$ip:8080/" | grep -qi '<html'
+curl -fsS -o /dev/null -w '%{content_type}' "http://$ip:8080/" | grep -qi 'text/html'
