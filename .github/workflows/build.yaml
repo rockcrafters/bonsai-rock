@@ -26,6 +26,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
+      # don't cancel the other arch if one fails -- we want both results.
+      fail-fast: false
       matrix:
         include:
           - runner: ubuntu-24.04
@@ -44,7 +46,7 @@ jobs:
           key: bonsai-model-${{ inputs.version }}
 
       - name: Build base rock (no model)
-        uses: canonical/craft-actions/rockcraft-pack@main
+        uses: canonical/craft-actions/rockcraft/pack@main
         with:
           path: bonsai/${{ inputs.version }}
           verbosity: brief
