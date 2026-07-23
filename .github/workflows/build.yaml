@@ -56,13 +56,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y skopeo jq
 
-      - name: Fetch model + inject layers
+      - name: Fetch + split model, inject shard layers
         working-directory: bonsai/${{ inputs.version }}
         run: |
           base=$(ls bonsai_${{ inputs.version }}_*.rock)
           echo "base rock: $base"
-          MODEL=$(hack/download-model.sh)
-          MODEL="$MODEL" SKOPEO=skopeo hack/inject.sh "$base" injected.rock
+          # split-model.sh downloads the gguf and shards it with the same
+          # llama.cpp release the rock builds; both are cached under .cache/.
+          SHARD_DIR=$(hack/split-model.sh)
+          SHARD_DIR="$SHARD_DIR" SKOPEO=skopeo hack/inject.sh "$base" injected.rock
           rm -f "$base"
           mv injected.rock bonsai_${{ inputs.version }}_${{ matrix.arch }}.rock
 

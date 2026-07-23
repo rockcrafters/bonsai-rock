@@ -12,6 +12,7 @@ LOCAL=(
     hack/inject-layers.sh
     hack/inject.sh
     hack/download-model.sh
+    hack/split-model.sh
 )
 
 {

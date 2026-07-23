@@ -11,16 +11,18 @@ cd "$(dirname "$0")/.."   # -> bonsai/1.7/
 OUT=${OUT:-bonsai_1.7.rock}   # final injected oci-archive (a .rock is one)
 IMG_TAG=bonsai
 
-printf '== fetch model ==\n'
-MODEL=$(hack/download-model.sh)
-printf 'model: %s\n' "$MODEL"
+# do this first: it fetches + splits the model, so a failure there costs
+# seconds rather than showing up after a multi-minute pack.
+printf '== fetch + split model ==\n'
+SHARD_DIR=$(hack/split-model.sh)
+printf 'shards: %s\n' "$SHARD_DIR"
 
 printf '== rockcraft pack ==\n'
 rockcraft pack
 ROCK=$(ls -t bonsai_1.7_*.rock | head -1)
 printf 'packed: %s\n' "$ROCK"
 
-MODEL="$MODEL" OUT="$OUT" hack/inject.sh "$ROCK" "$OUT"
+SHARD_DIR="$SHARD_DIR" OUT="$OUT" hack/inject.sh "$ROCK" "$OUT"
 # drop the base (model-less) rock so the injected one is the only bonsai*.rock
 rm -f "$ROCK"
 

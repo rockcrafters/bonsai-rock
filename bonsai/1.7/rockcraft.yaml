@@ -93,10 +93,8 @@ parts:
       #
     organize:
       bin/frontend: usr/bin/frontend
-      bin/llmserve: usr/bin/llmserve
     stage:
       - usr/bin/frontend
-      - usr/bin/llmserve
       #
 
   # ---- runtime libs the bare base lacks (bundled, as agreed) ----------------
@@ -124,21 +122,16 @@ services:
       BONSAI_MAX_TOKENS: "256"
       # static go binary -- no LD_LIBRARY_PATH needed.
 
-  # OpenAI-compatible endpoint (llama-server) -- point opencode et al at
-  # http://<host>:8082/v1 with model id `bonsai-1.7b`. llmserve reassembles the
-  # 4 model chunks (shared, idempotent) then execs llama-server, since pebble's
-  # `after:` only orders starts and a bare base has no shell to script it.
+  # OpenAI-compatible endpoint -- point opencode et al at http://<host>:8082/v1
+  # with model id bonsai-1.7b.
+  #
+  # the model ships as gguf-split shards, one per oci layer; llama.cpp loads the
+  # whole set from shard 1, so there is nothing to reassemble at startup and no
+  # wrapper process. the shard count is baked into this path, and
+  # hack/split-model.sh fails the build if the split ever yields a different one.
   llm:
     override: replace
-    command: /usr/bin/llmserve
+    command: /usr/bin/llama-server --model /usr/share/bonsai/model-00001-of-00004.gguf --host 0.0.0.0 --port 8082 --ctx-size 8192 --alias bonsai-1.7b
     startup: enabled
     environment:
-      BONSAI_MODEL_DIR: /usr/share/bonsai
-      BONSAI_MODEL: /var/lib/bonsai/model.gguf
-      BONSAI_LLM_HOST: 0.0.0.0
-      BONSAI_LLM_PORT: "8082"
-      # much larger than the chat ui's 1024 -- agentic clients send big prompts.
-      # costs memory; drop it if the rock is only serving the htmx ui.
-      BONSAI_LLM_CTX: "8192"
-      BONSAI_LLM_ALIAS: bonsai-1.7b
       LD_LIBRARY_PATH: /usr/lib:/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu
