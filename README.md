@@ -102,6 +102,34 @@ command, so the script fails the build if a split ever yields a different number
 > whether it sits high or low. we still inject below the app layer for clean
 > separation + stable model layers across app rebuilds, as specced.
 
+## licensing + provenance
+
+the rock redistributes other people's work, so the licences ship with it. every
+third-party component lands where a deb would put it, under `/usr/share/doc/`:
+
+| component | licence | in the image |
+| --- | --- | --- |
+| bonsai-1.7B weights | Apache-2.0 | `/usr/share/doc/bonsai-1.7B/{LICENSE,NOTICE.txt,PROVENANCE}` |
+| llama.cpp (`llama-server`, `libllama`, `libggml*`) | MIT | `/usr/share/doc/llama.cpp/LICENSE` |
+| glibc, libstdc++, libgomp | LGPL / GPL+exception | `/usr/share/doc/<pkg>/copyright` |
+
+- the model is Apache-2.0, whose section 4 requires the licence **and** the
+  NOTICE travel with the artefact -- `download-model.sh` fetches both from the
+  hugging face repo and `inject-layers.rb` puts them in their own oci layer.
+- `PROVENANCE` records the source repo, filename, byte size and sha256 of the
+  gguf the shards were cut from, so the weights in the image can be traced back.
+- the deb copyright files come for free: chisel declares `<pkg>_copyright` as an
+  `essential` slice, so `libc6_libs` and friends pull it automatically.
+- llama.cpp's `LICENSE` is not installed by `cmake --install`, so the part copies
+  it into the stage explicitly -- MIT requires the notice travel with the binary.
+
+**attribution.** the model's NOTICE asks for it, so: *created using Bonsai by
+Prism ML*. bonsai is itself built from Qwen3-1.7B, (c) 2024 Alibaba Cloud, also
+Apache-2.0 -- that chain is recorded in the shipped `NOTICE.txt`.
+
+this repo's own contents (rockcraft.yaml, the hack scripts, the tests) are
+Apache-2.0; see `LICENSE`.
+
 ## building
 
 **must build on linux** (rockcraft is linux-only; on macos only the model
