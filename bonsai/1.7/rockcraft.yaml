@@ -44,7 +44,10 @@ parts:
       - -DLLAMA_CURL=OFF
       # we only need libllama.so + libggml*.so -- turn off every optional build.
       # TOOLS gates the server/cli (their impl libs fail to link otherwise); UI
-      # defaults ON and would pull a web frontend build.
+      # defaults ON and would pull a web frontend build. COMMON is the CLI
+      # helper lib (arg-parsing/chat/sampling) -- ~1.4min to build and we never
+      # link it (the cgo wrapper uses llama.h only), so skip it.
+      - -DLLAMA_BUILD_COMMON=OFF
       - -DLLAMA_BUILD_TESTS=OFF
       - -DLLAMA_BUILD_EXAMPLES=OFF
       - -DLLAMA_BUILD_TOOLS=OFF
