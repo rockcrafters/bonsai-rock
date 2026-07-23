@@ -3,10 +3,12 @@ title: bonsai-1.7B-rock
 summary: bonsai-1.7B cpu inference with a tiny htmx chat frontend
 description: |
   a bare-base canonical rock running two pebble services:
-    - evaluator: loads the bonsai-1.7B gguf and serves single-turn completions
-    - frontend:  a minimal htmx chat client that proxies to the evaluator
+    - llm:      llama-server on the bonsai-1.7B gguf, exposing an
+                OpenAI-compatible api (/v1/models, /v1/chat/completions)
+    - frontend: a minimal htmx chat client that talks to it
 
-  bind a host port to the frontend (default 8080) to get a chat ui.
+  bind a host port to the frontend (default 8080) to get a chat ui, and/or to
+  the llm service (default 8082) to use it as a local OpenAI-compatible model.
 
   the model itself is NOT built into this rock by rockcraft. it is injected
   afterwards as 4 separate oci layers under /usr/share/bonsai/*.part[0-3]
@@ -42,16 +44,16 @@ parts:
       - -DCMAKE_INSTALL_LIBDIR=lib
       - -DBUILD_SHARED_LIBS=ON
       - -DLLAMA_CURL=OFF
-      # we only need libllama.so + libggml*.so -- turn off every optional build.
-      # TOOLS gates the server/cli (their impl libs fail to link otherwise); UI
-      # defaults ON and would pull a web frontend build. COMMON is the CLI
-      # helper lib (arg-parsing/chat/sampling) -- ~1.4min to build and we never
-      # link it (the cgo wrapper uses llama.h only), so skip it.
-      - -DLLAMA_BUILD_COMMON=OFF
+      # llama-server gives us the OpenAI-compatible API (/v1/chat/completions)
+      # for the `llm` service, so TOOLS+SERVER+COMMON must be ON (COMMON is the
+      # helper lib the tools link; TOOLS on with SERVER off fails to link).
+      # this costs build time -- TOOLS builds every tool, though we only prime
+      # llama-server. everything else stays off.
+      - -DLLAMA_BUILD_COMMON=ON
+      - -DLLAMA_BUILD_TOOLS=ON
+      - -DLLAMA_BUILD_SERVER=ON
       - -DLLAMA_BUILD_TESTS=OFF
       - -DLLAMA_BUILD_EXAMPLES=OFF
-      - -DLLAMA_BUILD_TOOLS=OFF
-      - -DLLAMA_BUILD_SERVER=OFF
       - -DLLAMA_BUILD_APP=OFF
       - -DLLAMA_BUILD_UI=OFF
       - -DGGML_NATIVE=OFF       # portable cpu build, no -march=native
@@ -61,9 +63,11 @@ parts:
       - libgomp1
       #
     prime:
-      - usr/include/**          # headers consumed at build by the evaluator part
+      # no headers: nothing links against llama.cpp any more (the cgo evaluator
+      # is gone). just the server binary and the libs it loads at runtime.
       - usr/lib/libllama.so*
       - usr/lib/libggml*.so*
+      - usr/bin/llama-server
       #
 
   # ---- the two go services --------------------------------------------------
@@ -81,21 +85,18 @@ parts:
       # fail validation ("invalid go compiler version 'go: downloading ...'").
       - go/latest/stable
       #
-    build-packages:
-      - build-essential         # cgo needs a c/c++ toolchain
-      #
     build-environment:
-      - CGO_ENABLED: "1"
+      # pure go -- inference is llama-server's job now, so no cgo, no c/c++
+      # toolchain, no linking against the staged llama libs. static binaries.
+      - CGO_ENABLED: "0"
       - GOTOOLCHAIN: local      # never fetch a toolchain over the network
-      - CGO_CFLAGS: "-I${CRAFT_STAGE}/usr/include"
-      - CGO_LDFLAGS: "-L${CRAFT_STAGE}/usr/lib -L${CRAFT_STAGE}/usr/lib/${CRAFT_ARCH_TRIPLET_BUILD_FOR}"
       #
     organize:
-      bin/evaluator: usr/bin/evaluator
       bin/frontend: usr/bin/frontend
+      bin/llmserve: usr/bin/llmserve
     stage:
-      - usr/bin/evaluator
       - usr/bin/frontend
+      - usr/bin/llmserve
       #
 
   # ---- runtime libs the bare base lacks (bundled, as agreed) ----------------
@@ -107,27 +108,37 @@ parts:
       - libgomp1                # openmp runtime used by ggml
       #
 
-# pebble services. evaluator loads the model, frontend serves the ui.
+# pebble services. llm does the inference (llama-server, OpenAI-compatible api);
+# frontend is a thin htmx client in front of it.
 services:
-  evaluator:
-    override: replace
-    command: /usr/bin/evaluator
-    startup: enabled
-    environment:
-      BONSAI_EVAL_ADDR: ":8081"
-      BONSAI_MODEL_DIR: /usr/share/bonsai
-      BONSAI_MODEL: /var/lib/bonsai/model.gguf
-      BONSAI_CTX: "1024"
-      BONSAI_MAX_TOKENS: "256"
-      LD_LIBRARY_PATH: /usr/lib:/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu
-
   frontend:
     override: replace
     command: /usr/bin/frontend
     startup: enabled
     after:
-      - evaluator
+      - llm
     environment:
       BONSAI_FRONTEND_ADDR: ":8080"
-      BONSAI_EVAL_URL: http://127.0.0.1:8081
+      BONSAI_LLM_URL: http://127.0.0.1:8082
+      BONSAI_LLM_MODEL: bonsai-1.7b
+      BONSAI_MAX_TOKENS: "256"
+      # static go binary -- no LD_LIBRARY_PATH needed.
+
+  # OpenAI-compatible endpoint (llama-server) -- point opencode et al at
+  # http://<host>:8082/v1 with model id `bonsai-1.7b`. llmserve reassembles the
+  # 4 model chunks (shared, idempotent) then execs llama-server, since pebble's
+  # `after:` only orders starts and a bare base has no shell to script it.
+  llm:
+    override: replace
+    command: /usr/bin/llmserve
+    startup: enabled
+    environment:
+      BONSAI_MODEL_DIR: /usr/share/bonsai
+      BONSAI_MODEL: /var/lib/bonsai/model.gguf
+      BONSAI_LLM_HOST: 0.0.0.0
+      BONSAI_LLM_PORT: "8082"
+      # much larger than the chat ui's 1024 -- agentic clients send big prompts.
+      # costs memory; drop it if the rock is only serving the htmx ui.
+      BONSAI_LLM_CTX: "8192"
+      BONSAI_LLM_ALIAS: bonsai-1.7b
       LD_LIBRARY_PATH: /usr/lib:/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu
