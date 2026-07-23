@@ -15,11 +15,11 @@ each rock version is a self-contained dir under `bonsai/<version>/` (currently
 rockcraft only mounts the project subtree, so the go source lives alongside it.
 
 - `bonsai/1.7/cmd/frontend`   -- pure-go htmx chat ui, calls the llm service's OpenAI api
-- `bonsai/1.7/cmd/llmserve`   -- reassembles the chunks, then execs `llama-server`
 - `bonsai/1.7/rockcraft.yaml` -- the rock: bare base, 2 pebble services, llama.cpp libs
-- `bonsai/1.7/hack/inject-layers.sh` -- splits the gguf into 4 oci layers (the interesting bit)
-- `bonsai/1.7/hack/build.sh` -- fetch model -> pack -> convert -> inject -> oci-archive
+- `bonsai/1.7/hack/inject-layers.sh` -- one oci layer per gguf shard (the interesting bit)
+- `bonsai/1.7/hack/build.sh` -- fetch+split model -> pack -> convert -> inject -> oci-archive
 - `bonsai/1.7/hack/download-model.sh` -- pulls the gguf from huggingface into `.cache/`
+- `bonsai/1.7/hack/split-model.sh` -- shards it with the pinned `llama-gguf-split`
 - `bonsai/1.7/{makefile,spread.yaml,tests/spread}` -- local build + spread integration tests
 - `.github/workflows/` -- CI: build (per-arch pack + inject, buildah multiarch) + spread test
 
@@ -46,13 +46,15 @@ curl http://localhost:8082/v1/models
 ```
 
 - base url: `http://localhost:8082/v1`
-- model id: `bonsai-1.7b` (set via `BONSAI_LLM_ALIAS`)
+- model id: `bonsai-1.7b`
 - `/v1/chat/completions` incl. streaming, courtesy of `llama-server`
 
-tunables on the `llm` service: `BONSAI_LLM_PORT`, `BONSAI_LLM_CTX` (default 8192),
-`BONSAI_LLM_ALIAS`, and `BONSAI_LLM_ARGS` as an escape hatch for any other
-`llama-server` flag. the frontend takes `BONSAI_MAX_TOKENS`, `BONSAI_TEMP` and
-`BONSAI_SYSTEM` for the requests it sends.
+the `llm` service runs `llama-server` directly, so its port / context size /
+alias are flags on the service `command:` in `rockcraft.yaml` (currently
+`--port 8082 --ctx-size 8192 --alias bonsai-1.7b`) rather than env vars --
+change them there, or override the service with a pebble layer. the frontend
+still takes `BONSAI_MAX_TOKENS`, `BONSAI_TEMP` and `BONSAI_SYSTEM` for the
+requests it sends.
 
 > **expectations.** bonsai-1.7B at `Q1_0` is 1.125 bpw on a 1.7B model. it will
 > answer, but agentic coding clients (opencode et al) lean hard on
@@ -60,10 +62,8 @@ tunables on the `llm` service: `BONSAI_LLM_PORT`, `BONSAI_LLM_CTX` (default 8192
 > heavily quantised does poorly. treat this as "the wiring works", not as a
 > usable local coding model.
 
-`llmserve` reassembles the 4 model chunks before exec'ing `llama-server`.
-that wrapper exists because pebble's `after:` only orders service *starts* (it
-would not wait for a ~237M reassembly) and a bare base has no shell to script
-"assemble then exec".
+there is no wrapper process: `llama-server` is the service command, pointed
+straight at shard 1 in its oci layer.
 
 ## the model is not in the rock (by design)
 
@@ -73,25 +73,34 @@ so they (a) download as parallel blobs and (b) stay cached when only the app cha
 
 so `build.sh` does it after packing:
 
-0. `download-model.sh` fetches the gguf from huggingface into `.cache/` (idempotent)
+0. `download-model.sh` fetches the gguf from huggingface into `.cache/`, then
+   `split-model.sh` shards it with `llama-gguf-split` (both idempotent + cached)
 1. `rockcraft pack` -> `bonsai_1.7_amd64.rock` (an oci-archive), no model in it
 2. `hack/inject.sh`: `skopeo copy oci-archive:... oci:build/oci` -> an oci layout on disk
-3. `inject-layers.sh` splits the gguf into 4 chunks, tars+gzips each into its own
-   layer at `/usr/share/bonsai/<model>.part0[0-3]`, and splices them into the
+3. `inject-layers.sh` tars+gzips each shard into its own layer at
+   `/usr/share/bonsai/model-0000N-of-00004.gguf`, and splices them into the
    manifest + config **just below the app content layer** (manifest/diff_id surgery)
 4. `skopeo copy oci:build/oci oci-archive:bonsai_1.7.rock` -> final image
 
 CI (`.github/workflows/build.yaml`) does the same, but packs the base rock with the
-`canonical/craft-actions/rockcraft-pack` action and then runs `download-model.sh` +
+`canonical/craft-actions/rockcraft-pack` action and then runs `split-model.sh` +
 `inject.sh` per arch, stitching the two into a multiarch rock with `buildah`.
 
 why not `umoci raw add-layer`: it only appends on **top**. placing layers *below*
 the app layer needs editing the layer + `diff_ids` ordering directly, which the
 script does with `jq` + `sha256sum` + `tar`.
 
-on startup `llmserve` `cat`s `/usr/share/bonsai/*.part*` (lexical order) back
-into `/var/lib/bonsai/model.gguf` (once, cached across restarts), then hands it
-to `llama-server`, which mmap-loads it.
+**the shards are real ggufs, not byte slices.** `gguf-split` writes each one as a
+valid gguf carrying split metadata, so llama.cpp loads the whole set when pointed
+at shard 1 -- `--model /usr/share/bonsai/model-00001-of-00004.gguf`. nothing
+reassembles anything at startup, and the rock needs no wrapper process to do it.
+(an earlier design shipped raw `dd` slices and `cat`ed them back together on boot,
+which cost a duplicate 237M write into the writable layer every first start.)
+
+the splitter is pinned to the same llama.cpp release the rock builds -- `split-model.sh`
+reads `source-tag` straight out of `rockcraft.yaml` -- so the shard format can never
+drift from the server that reads it. the shard **count** is baked into the service
+command, so the script fails the build if a split ever yields a different number.
 
 > note on "parallel download": the speedup comes from the **split into 4 blobs**,
 > not the position. blob digests are content-addressed, so a layer caches the same
@@ -134,7 +143,10 @@ validated on the macos dev box:
   **mainline** llama.cpp build) and works -- so no fork is needed (see below).
 - go binaries build; `go vet` clean; `GOOS=linux` cross-build ok
 - `inject-layers.sh` end-to-end on a synthetic oci layout: blob integrity, chain
-  resolution, 5-layer ordering, digest/diff_id consistency, **byte-exact reassembly**
+  resolution, 5-layer ordering, digest/diff_id consistency
+- **the shard scheme itself**: `llama-gguf-split` at the pinned tag produces 4
+  balanced shards (67/61/60/58M), and `llama-server --model ...-00001-of-00004.gguf`
+  loads the set and generates -- verified directly, outside the rock
 
 resolved unknowns:
 - **quant**: `Q1_0` = prism-ml's 1-bit g128 (ggml type 41 / file_type 40), qwen3 arch.
@@ -142,8 +154,8 @@ resolved unknowns:
   (`github.com/ggml-org/llama.cpp`); the fork the design first assumed is not used.
 
 NOT yet validated:
-- the `llm` service itself -- that `llama-server` builds in the rock and serves
-  `/v1` there. this is new; `tests/spread/general/test_openai_api` covers it.
+- the `llm` service in-rock -- that `llama-server` builds there, and loads the
+  shards from their oci layers. covered by `tests/spread/general/test_openai_api`.
 
 ## known risk hotspots
 
@@ -153,5 +165,8 @@ NOT yet validated:
   binaries are `CGO_ENABLED=0` static, so they carry no such dependency.
 - **build time** -- `LLAMA_BUILD_TOOLS=ON` (needed for `llama-server`) builds every
   llama.cpp tool, though only the server is primed. that is the bulk of CI time.
-- **memory** -- `BONSAI_LLM_CTX` defaults to 8192 for agentic clients; the KV cache
-  at that size is the main memory knob.
+- **memory** -- `--ctx-size` defaults to 8192 for agentic clients; the KV cache at
+  that size is the main memory knob.
+- **shard count is baked in** -- the service command names `model-00001-of-00004.gguf`
+  literally. `split-model.sh` asserts the split produced exactly that many, so a
+  changed model or split config fails the build instead of shipping a dead path.
