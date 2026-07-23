@@ -38,7 +38,7 @@ jobs:
       # exact name (not a pattern) so only the multiarch oci-archive lands,
       # not the per-arch artefacts (bonsai_1.7_amd64 / _arm64).
       - name: Download multiarch rock
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: bonsai_1.7
           path: artifacts

@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Cache the model download
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .cache
           key: bonsai-model-${{ inputs.version }}
@@ -78,7 +78,7 @@ jobs:
     needs: build-per-arch
     steps:
       - name: Download rock artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: bonsai_${{ inputs.version }}_*
           path: artifacts

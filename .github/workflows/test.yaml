@@ -31,7 +31,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download ${{ matrix.arch }} rock
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: bonsai_${{ inputs.version }}_${{ matrix.arch }}
           path: bonsai/${{ inputs.version }}/
