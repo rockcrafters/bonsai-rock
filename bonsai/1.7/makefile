@@ -50,10 +50,16 @@ FORCE:
 		cur=$$(cat $@ 2>/dev/null || true) ; \
 		[ "$$new" = "$$cur" ] || echo "$$new" > $@
 
-# hack/build.sh does the whole pipeline: download-model -> rockcraft pack
-# -> skopeo convert -> inject-layers -> repack, leaving one bonsai_1.7.rock.
+# fetch+split first, so a model problem fails in seconds rather than after a
+# multi-minute pack. inject.sh then does skopeo convert -> inject -> repack.
+# CI runs the same two scripts, only packing via the craft-actions action.
 bonsai_1.7.rock: .rock.stamp
-	hack/build.sh
+	hack/split-model.sh >/dev/null
+	rockcraft pack
+	@base=$$(ls -t bonsai_1.7_*.rock | head -1) ; \
+		echo "packed: $$base" ; \
+		hack/inject.sh "$$base" $@ ; \
+		rm -f "$$base"
 
 # Default `make test` to the native arch only; override w/ SPREAD_FILTER=...
 # (e.g. SPREAD_FILTER= make test  to run every system).
