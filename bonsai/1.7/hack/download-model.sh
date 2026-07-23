@@ -17,9 +17,41 @@ DEST="$CACHE/$MODEL_FILE"
 
 _size() { stat -c%s "$1" 2>/dev/null || stat -f%z "$1"; }
 
+DOCS="$CACHE/model-docs"
+
+# the model is Apache-2.0: section 4 requires we redistribute the licence and
+# retain the NOTICE, so they ship in the rock alongside the weights. also record
+# where the weights came from and what they hash to.
+_fetch_docs() {
+  mkdir -p "$DOCS"
+  local f
+  for f in LICENSE NOTICE.txt; do
+    [ -s "$DOCS/$f" ] && continue
+    printf 'fetching model %s...\n' "$f" >&2
+    curl -fsSL --retry 3 -o "$DOCS/$f" \
+      "https://huggingface.co/${MODEL_REPO}/resolve/main/$f"
+  done
+  # no timestamp: keep the build reproducible
+  {
+    printf 'bonsai-1.7B model provenance\n\n'
+    printf 'source:  https://huggingface.co/%s\n' "$MODEL_REPO"
+    printf 'file:    %s\n' "$MODEL_FILE"
+    printf 'size:    %s bytes\n' "$(_size "$DEST")"
+    printf 'sha256:  %s\n' "$(_sha256 "$DEST")"
+    printf 'license: Apache-2.0 (see LICENSE and NOTICE.txt beside this file)\n'
+    printf '\nthe weights are shipped as gguf-split shards, one oci layer each.\n'
+  } > "$DOCS/PROVENANCE"
+}
+
+_sha256() {
+  if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1
+  else shasum -a 256 "$1" | cut -d' ' -f1; fi
+}
+
 # already cached at the right size -> done
 if [ -f "$DEST" ] && [ "$(_size "$DEST")" = "$EXPECT_SIZE" ]; then
   printf 'reusing cached model: %s\n' "$DEST" >&2
+  _fetch_docs
   printf '%s\n' "$DEST"
   exit 0
 fi
@@ -31,6 +63,7 @@ ROOT_COPY="$REPO/$MODEL_FILE"
 if [ -f "$ROOT_COPY" ] && [ "$(_size "$ROOT_COPY")" = "$EXPECT_SIZE" ]; then
   printf 'linking model from repo root: %s\n' "$ROOT_COPY" >&2
   ln -f "$ROOT_COPY" "$DEST" 2>/dev/null || cp "$ROOT_COPY" "$DEST"
+  _fetch_docs
   printf '%s\n' "$DEST"
   exit 0
 fi
@@ -44,6 +77,8 @@ if [ "$got" != "$EXPECT_SIZE" ]; then
   printf 'size mismatch: got %s, expected %s\n' "$got" "$EXPECT_SIZE" >&2
   exit 1
 fi
+
+_fetch_docs
 
 printf 'downloaded: %s\n' "$DEST" >&2
 printf '%s\n' "$DEST"

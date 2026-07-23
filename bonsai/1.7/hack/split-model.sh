@@ -39,10 +39,18 @@ TAG=$(sed -n 's/^ *source-tag: *\(b[0-9][0-9]*\).*/\1/p' rockcraft.yaml | head -
 
 # .cache survives across CI runs, so cached shards must be invalidated when the
 # split config (or the llama.cpp version that produced them) changes.
+# the model's licence/notice/provenance ride along into the image beside the
+# weights (download-model.sh fetched them into .cache/model-docs).
+_copy_docs() {
+    [ -d "$CACHE/model-docs" ] || return 0
+    cp "$CACHE/model-docs"/* "$SHARDS/"
+}
+
 STAMP="$SHARDS/.split-config"
 WANT="$TAG $PREFIX $NSHARDS $MAXSIZE"
 if _have_all && [ "$(cat "$STAMP" 2>/dev/null || true)" = "$WANT" ]; then
     printf 'reusing cached shards in %s\n' "$SHARDS" >&2
+    _copy_docs   # cheap, and keeps a cache hit from silently dropping them
     printf '%s\n' "$SHARDS"
     exit 0
 fi
@@ -90,6 +98,8 @@ if [ "$got" != "$NSHARDS" ]; then
     exit 1
 fi
 _have_all || { printf 'shard naming is not %s-00001-of-%05d.gguf\n' "$PREFIX" "$NSHARDS" >&2; exit 1; }
+
+_copy_docs   # after the split: it wipes the shard dir
 
 printf '%s\n' "$WANT" > "$STAMP"
 printf 'wrote %s shards to %s\n' "$got" "$SHARDS" >&2

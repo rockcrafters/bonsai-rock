@@ -61,12 +61,20 @@ parts:
       - build-essential
       - libgomp1
       #
+    # cmake --install does not carry the licence, but MIT requires the notice
+    # travel with the binaries we redistribute -- so place it by hand.
+    override-build: |
+      craftctl default
+      install -D -m 644 "${CRAFT_PART_SRC}/LICENSE" \
+        "${CRAFT_PART_INSTALL}/usr/share/doc/llama.cpp/LICENSE"
     prime:
       # no headers: nothing links against llama.cpp -- the rock ships no
-      # first-party code. just the server binary and the libs it loads.
+      # first-party code. just the server binary, the libs it loads, and the
+      # licence that covers them.
       - usr/lib/libllama.so*
       - usr/lib/libggml*.so*
       - usr/bin/llama-server
+      - usr/share/doc/llama.cpp/LICENSE
       #
 
   # ---- runtime libs the bare base lacks (bundled, as agreed) ----------------

@@ -75,17 +75,29 @@ def write_blob(blobs, obj)
   [digest, body.bytesize]
 end
 
-oci_dir, tag, shard_dir, dest = ARGV
-die('usage: inject-layers.rb <oci-layout-dir> <ref-tag> <shard-dir> <dest-dir-in-image>') if
+oci_dir, tag, shard_dir, dest, doc_dest = ARGV
+die('usage: inject-layers.rb <oci-layout-dir> <ref-tag> <shard-dir> [<dest-dir>] [<doc-dir>]') if
   oci_dir.nil? || tag.nil? || shard_dir.nil?
 dest ||= 'usr/share/bonsai'
+# licence/notice/provenance go where a deb would put them, not beside the blobs
+doc_dest ||= 'usr/share/doc/bonsai-1.7B'
 
 blobs = File.join(oci_dir, 'blobs', 'sha256')
 die("not an oci layout: #{oci_dir}") unless File.directory?(blobs)
 
 shards = Dir.glob(File.join(shard_dir, '*.gguf')).sort
 die("no .gguf shards in #{shard_dir}") if shards.empty?
-puts ">> #{shards.length} shards from #{shard_dir}"
+
+# anything else in there (the model's LICENSE, NOTICE.txt, PROVENANCE) travels
+# with the weights -- apache-2.0 section 4 requires the licence and notice be
+# redistributed with the artefact they cover -- but lands under /usr/share/doc,
+# the way a deb would ship it, rather than beside the blobs.
+extras = (Dir.glob(File.join(shard_dir, '*')) - shards).select { |f| File.file?(f) }.sort
+
+# each shard is its own layer (parallel blob downloads); the docs share one
+groups = shards.map { |s| { files: [s], dest: dest, label: File.basename(s) } }
+groups << { files: extras, dest: doc_dest, label: 'licence + provenance' } unless extras.empty?
+puts ">> #{shards.length} shards + #{extras.length} licence/provenance files from #{shard_dir}"
 
 # --- resolve current manifest + config from the oci layout -------------------
 index = read_json(File.join(oci_dir, 'index.json'))
@@ -105,11 +117,11 @@ tar = ENV['TARBIN'] || 'tar'
 
 # --- build one layer per shard ----------------------------------------------
 Dir.mktmpdir('bonsai-inject') do |work|
-  shards.each_with_index do |shard, i|
-    name = File.basename(shard)
+  groups.each_with_index do |group, i|
+    name = group[:label]
     stage = File.join(work, format('stage%02d', i + 1))
-    FileUtils.mkdir_p(File.join(stage, dest))
-    FileUtils.cp(shard, File.join(stage, dest, name))
+    FileUtils.mkdir_p(File.join(stage, group[:dest]))
+    group[:files].each { |f| FileUtils.cp(f, File.join(stage, group[:dest], File.basename(f))) }
 
     raw = File.join(work, format('layer%02d.tar', i + 1))
     tar_dir(tar, stage, raw)
@@ -126,7 +138,7 @@ Dir.mktmpdir('bonsai-inject') do |work|
     # splice this shard BEFORE the last element (the app content layer)
     layers.insert(-2, { 'mediaType' => MEDIA_TYPE, 'digest' => "sha256:#{digest}", 'size' => size })
     diff_ids.insert(-2, "sha256:#{diff_id}")
-    history.insert(-2, { 'created_by' => "bonsai model shard #{name}",
+    history.insert(-2, { 'created_by' => "bonsai model: #{name}",
                          'comment' => 'injected by inject-layers.rb' })
   end
 end
@@ -148,4 +160,4 @@ index['manifests'][0]['size'] = new_manifest_size
 File.write(File.join(oci_dir, 'index.json'), JSON.generate(index))
 
 puts ">> done. new manifest sha256:#{new_manifest_digest[0, 12]}, ref=#{tag}"
-puts ">> layer order now: [<base layers>] [#{shards.length}x model shard] [app content]"
+puts ">> layer order now: [<base layers>] [#{groups.length}x model] [app content]"
