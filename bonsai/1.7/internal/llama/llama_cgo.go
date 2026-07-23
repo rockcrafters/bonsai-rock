@@ -7,7 +7,9 @@ package llama
 // so nothing here is tied to a dev-machine layout.
 
 /*
-#cgo LDFLAGS: -lllama -lggml -lggml-base -lm -lstdc++
+// mainline llama.cpp splits the cpu backend into libggml-cpu (it holds
+// ggml_backend_cpu_reg, which libggml.so references) -- must link it too.
+#cgo LDFLAGS: -lllama -lggml -lggml-cpu -lggml-base -lm -lstdc++
 #include <stdlib.h>
 #include <stdbool.h>
 #include "llama.h"

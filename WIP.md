@@ -70,8 +70,12 @@ surgery, since rockcraft can't place files into chosen layers.
       `GOTOOLCHAIN=local`, else the plugin trips go's toolchain auto-download
 - [x] llama.cpp `b10092` cmake: disable ALL optional builds, esp `LLAMA_BUILD_TOOLS=OFF`
       (+ APP/UI) -- else the server/cli impl libs fail to link. only libllama+libggml wanted.
-- [~] mainline llama.cpp compiling in-rock: reaches ~link stage (10min build); the tools
-      link error above is the current blocker -- not yet a clean llama part.
+- [x] **llama.cpp `b10092` builds + stages in-rock** (confirmed -- "Staging llama" reached)
+- [x] cgo link vs mainline lib split: add `-lggml-cpu` (holds `ggml_backend_cpu_reg`,
+      referenced by libggml.so); `CMAKE_INSTALL_LIBDIR=lib` keeps libs in `/usr/lib`
+      (not the triplet dir) so prime globs + LD_LIBRARY_PATH stay arch-agnostic
+- [~] go (services) part linking: was the blocker (missing `-lggml-cpu`); fix pushed, unverified
+- [ ] runtime: `LD_LIBRARY_PATH` now covers both triplets (staged libstdc++/libgomp land there)
 
 ## todo (needs a network-capable linux box w/ rockcraft -- CI now covers most)
 

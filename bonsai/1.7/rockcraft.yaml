@@ -36,6 +36,10 @@ parts:
     cmake-parameters:
       - -DCMAKE_BUILD_TYPE=Release
       - -DCMAKE_INSTALL_PREFIX=/usr
+      # keep libs in /usr/lib, not the multiarch triplet dir (usr/lib/<triplet>/)
+      # that GNUInstallDirs picks on ubuntu -- so the prime globs + a single
+      # LD_LIBRARY_PATH work for both arches.
+      - -DCMAKE_INSTALL_LIBDIR=lib
       - -DBUILD_SHARED_LIBS=ON
       - -DLLAMA_CURL=OFF
       # we only need libllama.so + libggml*.so -- turn off every optional build.
@@ -112,7 +116,7 @@ services:
       BONSAI_MODEL: /var/lib/bonsai/model.gguf
       BONSAI_CTX: "1024"
       BONSAI_MAX_TOKENS: "256"
-      LD_LIBRARY_PATH: /usr/lib:/usr/lib/x86_64-linux-gnu
+      LD_LIBRARY_PATH: /usr/lib:/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu
 
   frontend:
     override: replace
@@ -123,4 +127,4 @@ services:
     environment:
       BONSAI_FRONTEND_ADDR: ":8080"
       BONSAI_EVAL_URL: http://127.0.0.1:8081
-      LD_LIBRARY_PATH: /usr/lib:/usr/lib/x86_64-linux-gnu
+      LD_LIBRARY_PATH: /usr/lib:/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu
