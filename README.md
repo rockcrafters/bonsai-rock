@@ -110,7 +110,7 @@ third-party component lands where a deb would put it, under `/usr/share/doc/`:
 | component | licence | in the image |
 | --- | --- | --- |
 | bonsai-1.7B weights | Apache-2.0 | `/usr/share/doc/bonsai-1.7B/{LICENSE,NOTICE.txt,PROVENANCE}` |
-| llama.cpp (`llama-server`, `libllama`, `libggml*`) | MIT | `/usr/share/doc/llama.cpp/LICENSE` |
+| llama.cpp (`llama-server`, statically linked) | MIT | `/usr/share/doc/llama.cpp/LICENSE` |
 | glibc, libstdc++, libgomp | LGPL / GPL+exception | `/usr/share/doc/<pkg>/copyright` |
 
 - the model is Apache-2.0, whose section 4 requires the licence **and** the
@@ -172,6 +172,9 @@ validated on the macos dev box:
 - **the shard scheme itself**: `llama-gguf-split` at the pinned tag produces 4
   balanced shards (67/61/60/58M), and `llama-server --model ...-00001-of-00004.gguf`
   loads the set and generates -- verified directly, outside the rock
+- **static linkage**: a `BUILD_SHARED_LIBS=OFF` build of the server at the pinned
+  tag has no internal shared-lib deps (`ldd`/`otool` show only system libs), so
+  nothing needs `libllama-server-impl`/`libllama-common` at runtime
 
 resolved unknowns:
 - **quant**: `Q1_0` = prism-ml's 1-bit g128 (ggml type 41 / file_type 40), qwen3 arch.
@@ -188,10 +191,14 @@ NOT yet validated:
 
 ## known risk hotspots
 
-- **bare base + shared libs** -- `llama-server` is C++ and dynamically linked, so it
-  needs the ELF interp plus `libstdc++`/`libgomp`/glibc staged (`runtime-libs` part,
-  and `LD_LIBRARY_PATH` on the service covers both arch triplet dirs). the go
-  binaries are `CGO_ENABLED=0` static, so they carry no such dependency.
+- **bare base + shared libs** -- llama.cpp is built static (`BUILD_SHARED_LIBS=OFF`),
+  so `llama-server` carries llama/ggml in-binary and needs no llama `.so`s. it is
+  still C++ with OpenMP, so `libstdc++`/`libgomp`/glibc + the ELF interp are staged
+  (`runtime-libs`; `LD_LIBRARY_PATH` on the service covers both arch triplet dirs).
+  we build static because *nothing* links llama.cpp except the server itself -- with
+  shared libs it pulls `libllama-server-impl`/`libllama-common`, which `cmake
+  --install` never stages, so the binary would fail to load (`error while loading
+  shared libraries`). static sidesteps that whole class of bug.
 - **build time** -- `LLAMA_BUILD_TOOLS=ON` (needed for `llama-server`) builds every
   llama.cpp tool, though only the server is primed. that is the bulk of CI time.
 - **memory** -- `--ctx-size` defaults to 8192 for agentic clients; the KV cache at
