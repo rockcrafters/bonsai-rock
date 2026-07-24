@@ -34,5 +34,4 @@ curl http://localhost:8080/v1/models
 | llama.cpp (`llama-server`, statically linked) | MIT | `/usr/share/doc/llama.cpp/LICENSE` |
 | glibc, libstdc++, libgomp | LGPL / GPL+exception | `/usr/share/doc/<pkg>/copyright` |
 
-the Bonsai logo is (c) Prism ML, Inc., used under Apache-2.0 to identify the model
--- see [assets/ATTRIBUTION.md](assets/ATTRIBUTION.md). *Created using Bonsai by Prism ML.*
+the Bonsai logo is (c) Prism ML, Inc., used under Apache-2.0 to identify the model.
