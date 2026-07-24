@@ -16,10 +16,10 @@ jobs:
   build:
     uses: ./.github/workflows/build.yaml
     with:
-      version: '1.7'
+      version: '1.7B'
 
   test:
     needs: build
     uses: ./.github/workflows/test.yaml
     with:
-      version: '1.7'
+      version: '1.7B'

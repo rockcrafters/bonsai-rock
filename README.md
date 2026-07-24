@@ -1,11 +1,12 @@
 # bonsai-1.7B-rock
 
-bare-base [rock](https://documentation.ubuntu.com/rockcraft/) that *bundles* and runs
-[bonsai-1.7B](https://huggingface.co/prism-ml/Bonsai-1.7B-gguf) llama cpu server. bind
-a host port, get a chat window -- and an OpenAI-compatible API on the same port.
+bare-base [rock](https://documentation.ubuntu.com/rockcraft/) that *bundles* and
+runs [prism-ml/bonsai-1.7B](https://huggingface.co/prism-ml/Bonsai-1.7B-gguf) model
+through llama cpu server. bind a host port, get a chat window -- and an
+OpenAI-compatible API on the same port.
 
 ```
-docker run --rm -p 8080:8080 ghcr.io/rockcrafters/bonsai-rock/bonsai:1.7
+docker run --rm -p 8080:8080 ghcr.io/rockcrafters/bonsai-rock/bonsai:1.7B
 curl http://localhost:8080/v1/models
 ```
 
@@ -14,12 +15,12 @@ curl http://localhost:8080/v1/models
 - `/` -- llama.cpp's built-in chat web ui
 - `/v1/models`, `/v1/chat/completions` -- OpenAI-compatible API, incl. streaming and tool-calls
 
-> this is a fun stunt / proof-of principle. bonsai-1.7B at is a 1-bit model which
-> is very much optimised for size. its amazing that it answers at all. don't expect
-> great results.
+## links
 
+- https://github.com/PrismML-Eng/Bonsai-demo
+- https://github.com/ggml-org/llama.cpp
 
-## licensing + provenance
+## license
 
 | component | licence | in the image |
 | --- | --- | --- |

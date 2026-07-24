@@ -31,7 +31,7 @@ build-test-image:  ## Build the spread sshd test image (docker caches unchanged 
 			--platform linux/$(arch) . ; )
 
 .PHONY: build
-build: bonsai_1.7.rock  ## Fetch+split model, pack the rock, inject model layers
+build: bonsai_1.7B.rock  ## Fetch+split model, pack the rock, inject model layers
 
 .PHONY: model
 model:  ## Download the bonsai gguf + licence into .cache/ (idempotent)
@@ -40,9 +40,9 @@ model:  ## Download the bonsai gguf + licence into .cache/ (idempotent)
 # rockcraft pack (no model) then inject.rb does fetch+split+inject. make's own
 # mtime tracking repacks when any of these inputs change -- no stamp needed.
 # CI runs inject.rb the same way, only packing via the craft-actions action.
-bonsai_1.7.rock: rockcraft.yaml hack/inject.rb hack/download-model.rb
+bonsai_1.7B.rock: rockcraft.yaml hack/inject.rb hack/download-model.rb
 	rockcraft pack
-	@base=$$(ls -t bonsai_1.7_*.rock | head -1) ; \
+	@base=$$(ls -t bonsai_1.7B_*.rock | head -1) ; \
 		echo "packed: $$base" ; \
 		hack/inject.rb "$$base" $@ ; \
 		rm -f "$$base"
@@ -52,21 +52,21 @@ bonsai_1.7.rock: rockcraft.yaml hack/inject.rb hack/download-model.rb
 SPREAD_FILTER ?= craft-adhoc:ubuntu-26.04-$(NATIVE_ARCH)
 
 .PHONY: test
-test: bonsai_1.7.rock build-test-image  ## Run tests (native arch; override SPREAD_FILTER=)
+test: bonsai_1.7B.rock build-test-image  ## Run tests (native arch; override SPREAD_FILTER=)
 	spread $(SPREAD_FILTER)
 
 .PHONY: size
-size:  ## Show size of bonsai_1.7.rock if present
-	@if [ -f bonsai_1.7.rock ]; then \
-		du -h bonsai_1.7.rock | cut -f1; \
+size:  ## Show size of bonsai_1.7B.rock if present
+	@if [ -f bonsai_1.7B.rock ]; then \
+		du -h bonsai_1.7B.rock | cut -f1; \
 	else \
-		echo "bonsai_1.7.rock not built"; \
+		echo "bonsai_1.7B.rock not built"; \
 	fi
 
 .PHONY: ls-rock
-ls-rock: bonsai_1.7.rock  ## List the rock filesystem (skopeo -> docker export -> tar tv)
+ls-rock: bonsai_1.7B.rock  ## List the rock filesystem (skopeo -> docker export -> tar tv)
 	@tag=bonsai-ls-rock-$$$$ ; \
-		skopeo --insecure-policy copy oci-archive:bonsai_1.7.rock \
+		skopeo --insecure-policy copy oci-archive:bonsai_1.7B.rock \
 		    docker-daemon:$$tag:latest > /dev/null ; \
 		cid=$$($(DOCKER) create $$tag:latest) ; \
 		$(DOCKER) export $$cid | tar tv ; \
@@ -80,5 +80,5 @@ clean-test-image:  ## Remove sshd-ubuntu-26.04 test images
 
 .PHONY: clean
 clean:  ## Remove built artifacts (keeps the .cache/ model download)
-	rm -f bonsai_1.7*.rock
+	rm -f bonsai_1.7B*.rock
 	rm -rf build/oci

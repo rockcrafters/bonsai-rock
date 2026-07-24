@@ -251,7 +251,7 @@ end
 if $PROGRAM_NAME == __FILE__
   die('usage: inject.rb <base-rock> [<out-rock>]') if ARGV[0].nil?
   rock = File.expand_path(ARGV[0])   # resolve against the invocation cwd first
-  out  = ARGV[1] || 'bonsai_1.7.rock'
+  out  = ARGV[1] || 'bonsai_1.7B.rock'
   Dir.chdir(HERE)   # build/, rockcraft.yaml, the default out are all relative to here
 
   puts '== 1/4 fetch + split model =='
