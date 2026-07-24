@@ -37,11 +37,11 @@ parts:
     cmake-parameters:
       - -DCMAKE_BUILD_TYPE=Release
       - -DCMAKE_INSTALL_PREFIX=/usr
-      # keep libs in /usr/lib, not the multiarch triplet dir (usr/lib/<triplet>/)
-      # that GNUInstallDirs picks on ubuntu -- so the prime globs + a single
-      # LD_LIBRARY_PATH work for both arches.
-      - -DCMAKE_INSTALL_LIBDIR=lib
-      - -DBUILD_SHARED_LIBS=ON
+      # static: nothing links llama.cpp except llama-server itself, so build one
+      # self-contained binary. with shared libs the server pulls internal .so's
+      # (libllama-server-impl, libllama-common) that `cmake --install` never
+      # stages -- no prime glob can recover them. static sidesteps all of it.
+      - -DBUILD_SHARED_LIBS=OFF
       - -DLLAMA_CURL=OFF
       # llama-server is the whole app: it serves both the OpenAI-compatible API
       # and the embedded web UI. TOOLS+SERVER+COMMON must be ON (COMMON is the
@@ -68,11 +68,9 @@ parts:
       install -D -m 644 "${CRAFT_PART_SRC}/LICENSE" \
         "${CRAFT_PART_INSTALL}/usr/share/doc/llama.cpp/LICENSE"
     prime:
-      # no headers: nothing links against llama.cpp -- the rock ships no
-      # first-party code. just the server binary, the libs it loads, and the
-      # licence that covers them.
-      - usr/lib/libllama.so*
-      - usr/lib/libggml*.so*
+      # static binary -- llama/ggml are compiled in, so no .so's to ship. just
+      # the server and the licence that covers it. (libstdc++/libgomp/glibc come
+      # from the runtime-libs part; they stay dynamic.)
       - usr/bin/llama-server
       - usr/share/doc/llama.cpp/LICENSE
       #
