@@ -26,7 +26,7 @@ platforms:
   #          # llama.cpp is built per-arch (roughly doubles total build time).
 
 parts:
-  # ---- llama.cpp as shared libs (dynamic link, per the design) --------------
+  # ---- llama.cpp built static into the llama-server binary ------------------
   llama:
     plugin: cmake
     # mainline llama.cpp loads bonsai's Q1_0 gguf directly -- verified via
