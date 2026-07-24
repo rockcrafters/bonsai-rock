@@ -5,23 +5,22 @@
 # pointed at shard 1, with nothing reassembling them.
 
 source common.sh
-source defer.sh
 
 name=test_bonsai_openai
 ip=$(launch_rock openai)
-defer "docker logs $name 2>&1 | tail -80 || true; docker rm --force $name &>/dev/null || true" EXIT
+trap 'docker logs "$name" 2>&1 | tail -80 || true; docker rm --force "$name" &>/dev/null || true' EXIT
 
 # llama-server loads the model before it answers; give it room.
 wait_http "http://$ip:8080/v1/models" 60 3
 
 # the --alias we pass llama-server is the model id clients configure
-curl -fsS "http://$ip:8080/v1/models" | grep -q 'bonsai-1.7b'
+curl -fsS "http://$ip:8080/v1/models" | grep -Fiq 'bonsai-1.7b'
 
 # a real (tiny) completion through the OpenAI route
 reply=$(curl -fsS --max-time 330 -X POST "http://$ip:8080/v1/chat/completions" \
     -H 'content-type: application/json' \
-    -d '{"model":"bonsai-1.7b","max_tokens":8,"messages":[{"role":"user","content":"say hi in one word"}]}')
+    -d '{"model":"bonsai-1.7b","max_tokens":8,"messages":[{"role":"user","content":"mooo! 🐄"}]}')
 
-printf '%s' "$reply" | grep -q '"choices"'
+printf '%s' "$reply" | grep -Fiq '"choices"'
 # content must be present (value itself may be anything the model emits)
 printf '%s' "$reply" | grep -q '"content"'

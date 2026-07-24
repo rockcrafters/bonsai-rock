@@ -1,23 +1,9 @@
 name: Build
 
-# Reusable: builds per-arch rocks and stitches a multiarch manifest.
-# Parametrised by `version` -- the rock dir is bonsai/<version>, the
-# rockcraft version is <version>, and the artefacts are named
-# bonsai_<version>...
-#
-# Unlike a plain rock, the model is NOT packed by rockcraft. Each per-arch
-# job packs the base rock (craft-actions), fetches the gguf, then splices
-# the 4 model-chunk layers in below the app layer via hack/inject.sh.
-#
-# Artefacts uploaded (for version=1.7):
-#   - bonsai_1.7_amd64  -> bonsai/1.7/bonsai_1.7_amd64.rock (injected, amd64)
-#   - bonsai_1.7_arm64  -> bonsai/1.7/bonsai_1.7_arm64.rock (injected, arm64)
-#   - bonsai_1.7        -> bonsai_1.7.rock  (multiarch oci-archive)
 on:
   workflow_call:
     inputs:
       version:
-        description: rock version / dir under bonsai/ (e.g. 1.7)
         required: true
         type: string
 
@@ -26,8 +12,6 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
-      # don't cancel the other arch if one fails -- we want both results.
-      fail-fast: false
       matrix:
         include:
           - runner: ubuntu-24.04
@@ -39,38 +23,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Cache the model download
-        uses: actions/cache@v6
-        with:
-          path: .cache
-          key: bonsai-model-${{ inputs.version }}
-
       - name: Build base rock (no model)
         uses: canonical/craft-actions/rockcraft/pack@main
         with:
           path: bonsai/${{ inputs.version }}
           verbosity: brief
 
-      # jq is no longer needed: the layer surgery is ruby (stdlib json), and
-      # ruby ships on the runners.
       - name: Install skopeo
         run: |
           sudo apt-get update
           sudo apt-get install -y skopeo
 
-      - name: Fetch + split model, inject shard layers
+      - name: Inject model shards
         working-directory: bonsai/${{ inputs.version }}
         run: |
           base=$(ls bonsai_${{ inputs.version }}_*.rock)
-          echo "base rock: $base"
-          # split-model.sh downloads the gguf and shards it with the same
-          # llama.cpp release the rock builds; both are cached under .cache/.
-          SHARD_DIR=$(hack/split-model.sh)
-          SHARD_DIR="$SHARD_DIR" SKOPEO=skopeo hack/inject.sh "$base" injected.rock
+          SKOPEO=skopeo ruby hack/inject.rb "$base" injected.rock
           rm -f "$base"
           mv injected.rock bonsai_${{ inputs.version }}_${{ matrix.arch }}.rock
 
-      - name: Save the injected rock as a pipeline artifact
+      - name: Save rock as artifact
         uses: actions/upload-artifact@v6
         with:
           name: bonsai_${{ inputs.version }}_${{ matrix.arch }}

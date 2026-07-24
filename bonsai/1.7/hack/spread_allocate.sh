@@ -9,12 +9,8 @@ function main() {
     random_suffix=$(head /dev/urandom | tr -dc a-f0-9 | head -c8)
     container_name="${SPREAD_SYSTEM}-${random_suffix}"
 
-    # Host dir bound to /bonsai inside the test container. Spread syncs
-    # the project into /bonsai; mounting from the host means inner
-    # containers spawned via the shared docker socket can bind-mount
-    # the same content -- after translating the /bonsai prefix to the
-    # host path (see SPREAD_WORKDIR_HOST in spread.yaml + to_host in
-    # tests/spread/lib/common.sh).
+    # Host dir bound to /bonsai inside the test container -- spread syncs
+    # the project (test scripts + the rock) into /bonsai from here.
     # Single fixed path because workers=1; revisit if workers grow.
     workdir="/tmp/spread-bonsai"
     # Inner containers (via shared docker socket) run as root by

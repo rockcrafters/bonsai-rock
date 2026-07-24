@@ -2,15 +2,12 @@
 build/
 *.rock
 *.oci
-bonsai-1.7B.oci
 
 # model weights + gguf shards (downloaded/split into .cache/, injected at
 # build, never committed)
 .cache/
 *.gguf
 
-# make stamps + spread scratch
-*.stamp
-.*.stamp
+# spread scratch
 spread.env
 tests/spread/tmp/

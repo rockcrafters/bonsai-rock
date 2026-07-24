@@ -2,52 +2,43 @@ name: bonsai
 title: bonsai-1.7B-rock
 summary: bonsai-1.7B cpu inference with a chat ui and an OpenAI-compatible api
 description: |
-  a bare-base canonical rock running a single pebble service: llama-server on
-  the bonsai-1.7B gguf, serving both its embedded chat web ui and an
-  OpenAI-compatible api (/v1/models, /v1/chat/completions) on one port.
-
-  bind a host port (default 8080) and open it for the chat ui, or point an
-  OpenAI-compatible client at /v1 to use it as a local model.
+  bare-base rock that *bundles* and runs prism-ml/bonsai-1.7B model through
+  llama cpu server. bind a host port (default 8080) and open it for the chat ui,
+  or point an OpenAI-compatible client at /v1 to use it as a local model.
 
   the weights are not packed by rockcraft: they are injected afterwards as
   gguf-split shards, one oci layer each, so the 237M downloads in parallel and
-  stays cached across app rebuilds. llama.cpp loads the set from shard 1, so
-  nothing reassembles them at startup.
+  stays cached across app rebuilds.
 license: Apache-2.0
-version: "1.7"
+version: "1.7B"
 
-# bare = no os layer. we hand-stage the exact runtime libs llama-server needs.
 base: bare
 build-base: ubuntu@22.04
 
 platforms:
   amd64:
-  arm64:     # each CI runner is native for its arch, so no cross-build/qemu.
-  #          # llama.cpp is built per-arch (roughly doubles total build time).
+  arm64:
+
+services:
+  llm:
+    override: replace
+    command: /usr/bin/llama-server \
+      --model /usr/share/bonsai/model-00001-of-00004.gguf \
+      --host 0.0.0.0 --port 8080 --ctx-size 8192 --alias bonsai-1.7b
+    startup: enabled
+    environment:
+      LD_LIBRARY_PATH: /usr/lib:/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu
 
 parts:
-  # ---- llama.cpp built static into the llama-server binary ------------------
   llama:
     plugin: cmake
-    # mainline llama.cpp loads bonsai's Q1_0 gguf directly -- verified via
-    # bonsai.py, which runs the same quant through stock llama-cpp-python (a
-    # plain mainline build). no fork needed. pinned to a recent mainline release.
     source: https://github.com/ggml-org/llama.cpp.git
     source-tag: b10092
     cmake-parameters:
       - -DCMAKE_BUILD_TYPE=Release
       - -DCMAKE_INSTALL_PREFIX=/usr
-      # static: nothing links llama.cpp except llama-server itself, so build one
-      # self-contained binary. with shared libs the server pulls internal .so's
-      # (libllama-server-impl, libllama-common) that `cmake --install` never
-      # stages -- no prime glob can recover them. static sidesteps all of it.
       - -DBUILD_SHARED_LIBS=OFF
       - -DLLAMA_CURL=OFF
-      # llama-server is the whole app: it serves both the OpenAI-compatible API
-      # and the embedded web UI. TOOLS+SERVER+COMMON must be ON (COMMON is the
-      # helper lib the tools link; TOOLS on with SERVER off fails to link).
-      # UI is the built-in chat front end -- LLAMA_USE_PREBUILT_UI (default ON)
-      # fetches it prebuilt rather than needing a javascript toolchain here.
       - -DLLAMA_BUILD_COMMON=ON
       - -DLLAMA_BUILD_TOOLS=ON
       - -DLLAMA_BUILD_SERVER=ON
@@ -55,46 +46,21 @@ parts:
       - -DLLAMA_BUILD_TESTS=OFF
       - -DLLAMA_BUILD_EXAMPLES=OFF
       - -DLLAMA_BUILD_APP=OFF
-      - -DGGML_NATIVE=OFF       # portable cpu build, no -march=native
-      #
+      - -DGGML_NATIVE=OFF # portable cpu build, no -march=native
     build-packages:
       - build-essential
       - libgomp1
-      #
-    # cmake --install does not carry the licence, but MIT requires the notice
-    # travel with the binaries we redistribute -- so place it by hand.
     override-build: |
       craftctl default
       install -D -m 644 "${CRAFT_PART_SRC}/LICENSE" \
         "${CRAFT_PART_INSTALL}/usr/share/doc/llama.cpp/LICENSE"
     prime:
-      # static binary -- llama/ggml are compiled in, so no .so's to ship. just
-      # the server and the licence that covers it. (libstdc++/libgomp/glibc come
-      # from the runtime-libs part; they stay dynamic.)
       - usr/bin/llama-server
       - usr/share/doc/llama.cpp/LICENSE
-      #
 
-  # ---- runtime libs the bare base lacks (bundled, as agreed) ----------------
   runtime-libs:
     plugin: nil
     stage-packages:
-      - libc6_libs                   # glibc + dynamic loader (bare has none)
-      - libstdc++6_libs              # llama.cpp is c++
-      - libgomp1_libs                # openmp runtime used by ggml
-      #
-
-# one service. llama-server serves both the embedded chat ui (/) and the
-# OpenAI-compatible api (/v1) on the same port, so there is nothing else to run.
-#
-# the model ships as gguf-split shards, one per oci layer; llama.cpp loads the
-# whole set from shard 1, so there is nothing to reassemble at startup and no
-# wrapper process. the shard count is baked into this path, and
-# hack/split-model.sh fails the build if the split ever yields a different one.
-services:
-  llm:
-    override: replace
-    command: /usr/bin/llama-server --model /usr/share/bonsai/model-00001-of-00004.gguf --host 0.0.0.0 --port 8080 --ctx-size 8192 --alias bonsai-1.7b
-    startup: enabled
-    environment:
-      LD_LIBRARY_PATH: /usr/lib:/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu
+      - libc6_libs
+      - libstdc++6_libs
+      - libgomp1_libs

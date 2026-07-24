@@ -1,7 +1,6 @@
 name: CI
 run-name: CI for ${{ github.ref }}
 
-# Build + test on PR and on push to main. No publishing.
 on:
   pull_request:
   push:
@@ -9,8 +8,6 @@ on:
       - main
   workflow_dispatch:
 
-# Cancel an in-flight run on the same ref when a newer one starts
-# (e.g. force-push to a PR branch).
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

@@ -1,10 +1,5 @@
 name: Release
 
-# Build + test + publish the rock to ghcr on push of a revision tag
-# (r1, r2, ...):
-#   - bonsai:1.7
-#
-# Dormant until a tag is pushed -- CI (ci.yaml) never publishes.
 on:
   push:
     tags:
