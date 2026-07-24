@@ -1,5 +1,7 @@
 # bonsai-1.7B-rock
 
+🌳
+
 bare-base [rock](https://documentation.ubuntu.com/rockcraft/) that *bundles* and
 runs [prism-ml/bonsai-1.7B](https://huggingface.co/prism-ml/Bonsai-1.7B-gguf) model
 through llama cpu server. bind a host port, get a chat window -- and an
