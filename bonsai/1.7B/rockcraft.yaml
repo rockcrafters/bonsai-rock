@@ -13,7 +13,7 @@ license: Apache-2.0
 version: "1.7B"
 
 base: bare
-build-base: ubuntu@22.04
+build-base: ubuntu@26.04
 
 platforms:
   amd64:
