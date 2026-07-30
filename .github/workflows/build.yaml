@@ -29,16 +29,16 @@ jobs:
           path: bonsai/${{ inputs.version }}
           verbosity: brief
 
-      - name: Install skopeo
+      - name: Install skopeo and umoci
         run: |
           sudo apt-get update
-          sudo apt-get install -y skopeo
+          sudo apt-get install -y skopeo umoci
 
       - name: Inject model shards
         working-directory: bonsai/${{ inputs.version }}
         run: |
           base=$(ls bonsai_${{ inputs.version }}_*.rock)
-          SKOPEO=skopeo ruby hack/inject.rb "$base" injected.rock
+          SKOPEO=skopeo ruby hack/little-surgery.rb "$base" injected.rock
           rm -f "$base"
           mv injected.rock bonsai_${{ inputs.version }}_${{ matrix.arch }}.rock
 
