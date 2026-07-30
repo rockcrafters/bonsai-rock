@@ -71,8 +71,8 @@ def splitter(tag)
     abort("llama-gguf-split not found in #{tarball}")
 end
 
-# download-model.rb echoes the gguf path on stdout, and leaves the licence and
-# NOTICE in .cache/model-docs for the doc layer below.
+# download-model.rb also leaves the licence and NOTICE in .cache/model-docs,
+# which the doc layer below picks up.
 def model_path
   script = File.join(__dir__, 'download-model.rb')
   path = IO.popen([script], &:read).strip
