@@ -12,8 +12,9 @@ through llama cpu server. bind a host port, get a chat window -- and an
 OpenAI-compatible API on the same port.
 
 ```
-docker run --rm -p 8080:8080 ghcr.io/rockcrafters/bonsai-rock/bonsai:1.7B
-curl http://localhost:8080/v1/models
+docker run -d --rm --name bonsai -p 8080:8080 ghcr.io/rockcrafters/bonsai-rock/bonsai:1.7B
+curl http://localhost:8080/v1/models | jq '.models[].name'
+docker rm -f bonsai
 ```
 
 `llama-server` runs under pebble and serves everything on `:8080`:
@@ -25,6 +26,7 @@ curl http://localhost:8080/v1/models
 
 - https://github.com/PrismML-Eng/Bonsai-demo
 - https://github.com/ggml-org/llama.cpp
+- https://github.com/PrismML-Eng/Bonsai-demo/blob/main/1-bit-bonsai-8b-whitepaper.pdf
 
 ## license
 

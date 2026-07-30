@@ -37,14 +37,17 @@ build: bonsai_1.7B.rock  ## Fetch+split model, pack the rock, inject model layer
 model:  ## Download the bonsai gguf + licence into .cache/ (idempotent)
 	hack/download-model.rb
 
-# rockcraft pack (no model) then inject.rb does fetch+split+inject. make's own
-# mtime tracking repacks when any of these inputs change -- no stamp needed.
-# CI runs inject.rb the same way, only packing via the craft-actions action.
-bonsai_1.7B.rock: rockcraft.yaml hack/inject.rb hack/download-model.rb
+# rockcraft pack (no model) then little-surgery.rb does fetch+split+inject.
+# make's own mtime tracking repacks when any of these inputs change -- no stamp
+# needed. CI runs it the same way, only packing via the craft-actions action.
+# linux guard is per-target: a mac can still `make test` against a prebuilt rock.
+bonsai_1.7B.rock: rockcraft.yaml hack/little-surgery.rb hack/download-model.rb
+	@[ "$$(uname -s)" = Linux ] || { \
+		echo "packing needs linux: rockcraft and umoci are linux-only" >&2 ; exit 1 ; }
 	rockcraft pack
 	@base=$$(ls -t bonsai_1.7B_*.rock | head -1) ; \
 		echo "packed: $$base" ; \
-		hack/inject.rb "$$base" $@ ; \
+		hack/little-surgery.rb "$$base" $@ ; \
 		rm -f "$$base"
 
 # Default `make test` to the native arch only; override w/ SPREAD_FILTER=...

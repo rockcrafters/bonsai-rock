@@ -19,19 +19,29 @@ platforms:
   amd64:
   arm64:
 
+run-user: _daemon_
+
 services:
   llm:
     override: replace
-    # folded scalar (>-): lines join with spaces into one command string.
-    # do NOT use `\` continuations -- pebble runs this without a shell, so a
-    # literal backslash becomes a bogus argument and llama-server exits.
     command: >-
       /usr/bin/llama-server
       --model /usr/share/bonsai/model-00001-of-00004.gguf
-      --host 0.0.0.0 --port 8080 --ctx-size 8192 --alias bonsai-1.7b
+      --host 0.0.0.0 --port 8080 --alias bonsai-1.7b --metrics
+      [ --ctx-size 8192 ]
     startup: enabled
     environment:
       LD_LIBRARY_PATH: /usr/lib:/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu
+
+checks:
+  llm-ready:
+    override: replace
+    level: ready
+    period: 10s
+    timeout: 3s
+    threshold: 6
+    http:
+      url: http://127.0.0.1:8080/health
 
 parts:
   llama:
