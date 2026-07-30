@@ -19,6 +19,8 @@ platforms:
   amd64:
   arm64:
 
+run-user: _daemon_
+
 services:
   llm:
     override: replace
