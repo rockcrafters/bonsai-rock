@@ -35,7 +35,7 @@ llm = Llama(model_path=model_path, n_ctx=1024, n_gpu_layers=-1, logits_all=True,
 
 options = "\n".join(f"{label}. {choice}" for label, choice in zip(labels, choices, strict=True))
 prompt = f"""<|im_start|>system
-Choose one option.<|im_end|>
+Reply with only the letter of the best option.<|im_end|>
 <|im_start|>user
 {args.prompt}\n\n{options}<|im_end|>
 <|im_start|>assistant
