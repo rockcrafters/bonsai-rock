@@ -1,0 +1,80 @@
+name: bonsai
+title: bonsai-2-2B-rock
+summary: ternary bonsai-2-2B cpu inference with a chat ui and an OpenAI-compatible api
+description: |
+  bare-base rock that *bundles* and runs prism-ml/ternary-bonsai-2-2B model through
+  llama cpu server. bind a host port (default 8080) and open it for the chat ui,
+  or point an OpenAI-compatible client at /v1 to use it as a local model.
+
+  the weights are not packed by rockcraft: they are injected afterwards as
+  gguf-split shards, one oci layer each, so the 547M downloads in parallel and
+  stays cached across app rebuilds.
+license: Apache-2.0
+version: "2-2B"
+
+base: bare
+build-base: ubuntu@26.04
+
+platforms:
+  amd64:
+  arm64:
+
+run-user: _daemon_
+
+services:
+  llm:
+    override: replace
+    command: >-
+      /usr/bin/llama-server
+      --model /usr/share/bonsai/model-00001-of-00004.gguf
+      --host 0.0.0.0 --port 8080 --alias bonsai-2-2b --metrics
+      [ --ctx-size 8192 ]
+    startup: enabled
+    environment:
+      LD_LIBRARY_PATH: /usr/lib:/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu
+
+checks:
+  llm-ready:
+    override: replace
+    level: ready
+    period: 10s
+    timeout: 3s
+    threshold: 6
+    http:
+      url: http://127.0.0.1:8080/health
+
+parts:
+  llama:
+    plugin: cmake
+    source: https://github.com/ggml-org/llama.cpp.git
+    source-tag: b11556 # first upstream tag w/ the hadamard runtime Q2_0 needs
+    cmake-parameters:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/usr
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DLLAMA_OPENSSL=OFF
+      - -DLLAMA_BUILD_COMMON=ON
+      - -DLLAMA_BUILD_TOOLS=ON
+      - -DLLAMA_BUILD_SERVER=ON
+      - -DLLAMA_BUILD_UI=ON
+      - -DLLAMA_BUILD_TESTS=OFF
+      - -DLLAMA_BUILD_EXAMPLES=OFF
+      - -DLLAMA_BUILD_APP=OFF
+      - -DGGML_NATIVE=OFF # portable cpu build, no -march=native
+    build-packages:
+      - build-essential
+      - libgomp1
+    override-build: |
+      craftctl default
+      install -D -m 644 "${CRAFT_PART_SRC}/LICENSE" \
+        "${CRAFT_PART_INSTALL}/usr/share/doc/llama.cpp/LICENSE"
+    prime:
+      - usr/bin/llama-server
+      - usr/share/doc/llama.cpp/LICENSE
+
+  runtime-libs:
+    plugin: nil
+    stage-packages:
+      - libc6_libs
+      - libstdc++6_libs
+      - libgomp1_libs

@@ -1,0 +1,2 @@
+summary: The llm service serves an OpenAI-compatible API (llama-server)
+execute: bash -ex test_openai_api.sh

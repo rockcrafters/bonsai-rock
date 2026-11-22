@@ -1,0 +1,2 @@
+summary: Rock boots under pebble and llama-server serves its embedded web ui
+execute: bash -ex test_boot.sh

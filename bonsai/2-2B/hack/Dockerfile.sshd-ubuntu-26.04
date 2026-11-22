@@ -1,0 +1,23 @@
+# ubuntu 26.04 with openssh-server -- the spread adhoc backend host.
+# runs a shared docker socket so spread tests can `docker run` the rock-under-test.
+# Build image for arm64 with:
+#   docker build -t sshd-ubuntu-26.04-arm64 -f hack/Dockerfile.sshd-ubuntu-26.04 --platform linux/arm64 .
+# Build image for amd64 with:
+#   docker build -t sshd-ubuntu-26.04-amd64 -f hack/Dockerfile.sshd-ubuntu-26.04 --platform linux/amd64 .
+
+FROM ubuntu:26.04
+
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        openssh-server \
+        docker.io \
+        skopeo \
+        curl && \
+    mkdir /var/run/sshd || true && \
+    echo 'root:ubuntu' | chpasswd && \
+    echo "PermitRootLogin yes" >> /etc/ssh/sshd_config && \
+    sed -i 's/UsePAM yes/UsePAM no/g' /etc/ssh/sshd_config && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+EXPOSE 22
+CMD ["/usr/sbin/sshd", "-D"]
