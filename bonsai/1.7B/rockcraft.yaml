@@ -47,12 +47,12 @@ parts:
   llama:
     plugin: cmake
     source: https://github.com/ggml-org/llama.cpp.git
-    source-tag: b10092
+    source-tag: b11556
     cmake-parameters:
       - -DCMAKE_BUILD_TYPE=Release
       - -DCMAKE_INSTALL_PREFIX=/usr
       - -DBUILD_SHARED_LIBS=OFF
-      - -DLLAMA_CURL=OFF
+      - -DLLAMA_OPENSSL=OFF
       - -DLLAMA_BUILD_COMMON=ON
       - -DLLAMA_BUILD_TOOLS=ON
       - -DLLAMA_BUILD_SERVER=ON
