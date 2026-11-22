@@ -23,6 +23,9 @@ curl http://localhost:8080/v1/models | jq '.models[].name'
 docker rm -f bonsai
 ```
 
+[ternary bonsai 2 2B](https://huggingface.co/prism-ml/Ternary-Bonsai-2-2B-gguf)
+(text only, `Q2_0` packing) is tagged `bonsai:2-2B`, served as `bonsai-2-2b`.
+
 `llama-server` runs under pebble and serves everything on `:8080`:
 
 - `/` -- llama.cpp's built-in chat web ui
@@ -33,12 +36,14 @@ docker rm -f bonsai
 - https://github.com/PrismML-Eng/Bonsai-demo
 - https://github.com/ggml-org/llama.cpp
 - https://github.com/PrismML-Eng/Bonsai-demo/blob/main/1-bit-bonsai-8b-whitepaper.pdf
+- https://github.com/PrismML-Eng/Bonsai-demo/blob/main/bonsai-2-small-whitepaper.pdf
 
 ## license
 
 | component | licence | in the image |
 | --- | --- | --- |
 | bonsai-1.7B weights | Apache-2.0 | `/usr/share/doc/bonsai-1.7B/{LICENSE,NOTICE.txt,PROVENANCE}` |
+| ternary-bonsai-2-2B weights | Apache-2.0 | `/usr/share/doc/bonsai-2-2B/{LICENSE,NOTICE.txt,PROVENANCE}` |
 | llama.cpp (`llama-server`, statically linked) | MIT | `/usr/share/doc/llama.cpp/LICENSE` |
 | glibc, libstdc++, libgomp | LGPL / GPL+exception | `/usr/share/doc/<pkg>/copyright` |
 

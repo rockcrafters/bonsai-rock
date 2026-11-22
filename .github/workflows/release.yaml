@@ -11,31 +11,40 @@ env:
 
 jobs:
   build:
+    strategy:
+      matrix:
+        version: ['1.7B', '2-2B']
     uses: ./.github/workflows/build.yaml
     with:
-      version: '1.7B'
+      version: ${{ matrix.version }}
 
   test:
     needs: build
+    strategy:
+      matrix:
+        version: ['1.7B', '2-2B']
     uses: ./.github/workflows/test.yaml
     with:
-      version: '1.7B'
+      version: ${{ matrix.version }}
 
   publish-ghcr:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: test
+    strategy:
+      matrix:
+        version: ['1.7B', '2-2B']
     permissions:
       contents: read
       packages: write
 
     steps:
       # exact name (not a pattern) so only the multiarch oci-archive lands,
-      # not the per-arch artefacts (bonsai_1.7B_amd64 / _arm64).
+      # not the per-arch artefacts (bonsai_<version>_amd64 / _arm64).
       - name: Download multiarch rock
         uses: actions/download-artifact@v8
         with:
-          name: bonsai_1.7B
+          name: bonsai_${{ matrix.version }}
           path: artifacts
 
       - name: Install Skopeo
@@ -48,5 +57,5 @@ jobs:
           skopeo copy \
             --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
             --multi-arch=all \
-            oci-archive:artifacts/bonsai_1.7B.rock \
-            docker://${{ env.REGISTRY }}/${{ github.repository }}/bonsai:1.7B
+            oci-archive:artifacts/bonsai_${{ matrix.version }}.rock \
+            docker://${{ env.REGISTRY }}/${{ github.repository }}/bonsai:${{ matrix.version }}

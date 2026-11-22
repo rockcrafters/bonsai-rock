@@ -14,12 +14,20 @@ concurrency:
 
 jobs:
   build:
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['1.7B', '2-2B']
     uses: ./.github/workflows/build.yaml
     with:
-      version: '1.7B'
+      version: ${{ matrix.version }}
 
   test:
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['1.7B', '2-2B']
     uses: ./.github/workflows/test.yaml
     with:
-      version: '1.7B'
+      version: ${{ matrix.version }}
