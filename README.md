@@ -1,4 +1,4 @@
-# bonsai-1.7B-rock
+# bonsai rock
 
 [![CI](https://github.com/rockcrafters/bonsai-rock/actions/workflows/ci.yaml/badge.svg)](https://github.com/rockcrafters/bonsai-rock/actions/workflows/ci.yaml)
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?logo=ubuntu&logoColor=white)](https://ubuntu.com/)
